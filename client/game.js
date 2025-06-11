@@ -7,8 +7,13 @@ let gameActive = false;
 let playerControls = { left: false, right: false, jump: false };
 let playerVelocity = { x: 0, y: 0, z: 0 };
 let gravity = 0.005;
-let jumpForce = 0.15;
-let moveSpeed = 0.1;
+
+// Time tracking for smooth animations
+let clock = null;
+let deltaTime = 0;
+let lastTime = 0;
+let syncTimer = 0;
+const SYNC_INTERVAL = 100; // Sync obstacles every 100ms instead of every frame
 
 // Scoring system
 let gameStartTime = 0;
@@ -19,9 +24,11 @@ let scoreInterval = null;
 // Game constants
 const ARENA_SIZE = 10;
 const CUBE_SIZE = 0.5;
-const OBSTACLE_COUNT = 20;
+const NUM_OBSTACLES = 20;
 const OBSTACLE_SIZE = 0.7;
 const OBSTACLE_SPAWN_HEIGHT = 15;
+const JUMP_FORCE = 0.15;
+const MOVE_SPEED = 0.1;
 
 // Initialize the game
 function init() {
@@ -68,6 +75,7 @@ function init() {
     window.addEventListener('resize', onWindowResize);
     
     // Start animation loop
+    clock = new THREE.Clock();
     animate();
 }
 
@@ -129,9 +137,16 @@ function createArena() {
 // Create the player's cube
 function createPlayerCube() {
     const geometry = new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE);
-    const playerTexture = window.textureUtils.createCubeTexture('#00ff00');
+    
+    // Use green for player1 and red for player2
+    const playerColor = (typeof playerRole !== 'undefined' && playerRole === 'player2') ? '#ff0000' : '#00ff00';
+    const playerHexColor = (typeof playerRole !== 'undefined' && playerRole === 'player2') ? 0xff0000 : 0x00ff00;
+    
+    console.log('Creating player cube with color:', playerColor, 'for role:', playerRole);
+    
+    const playerTexture = window.textureUtils.createCubeTexture(playerColor);
     const material = new THREE.MeshStandardMaterial({ 
-        color: 0x00ff00,
+        color: playerHexColor,
         map: playerTexture,
         roughness: 0.5,
         metalness: 0.2
@@ -146,9 +161,16 @@ function createPlayerCube() {
 // Create the opponent's cube
 function createOpponentCube() {
     const geometry = new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE);
-    const opponentTexture = window.textureUtils.createCubeTexture('#ff0000');
+    
+    // Use opposite color of player (red for player1's opponent, green for player2's opponent)
+    const opponentColor = (typeof playerRole !== 'undefined' && playerRole === 'player2') ? '#00ff00' : '#ff0000';
+    const opponentHexColor = (typeof playerRole !== 'undefined' && playerRole === 'player2') ? 0x00ff00 : 0xff0000;
+    
+    console.log('Creating opponent cube with color:', opponentColor, 'for player role:', playerRole);
+    
+    const opponentTexture = window.textureUtils.createCubeTexture(opponentColor);
     const material = new THREE.MeshStandardMaterial({ 
-        color: 0xff0000,
+        color: opponentHexColor,
         map: opponentTexture,
         roughness: 0.5,
         metalness: 0.2
@@ -272,36 +294,63 @@ function onWindowResize() {
 
 // Update player position based on controls
 function updatePlayerPosition() {
-    // Apply horizontal movement
+    // Apply gravity
+    playerVelocity.y -= gravity * deltaTime;
+    
+    // Handle left/right movement
+    playerVelocity.x = 0;
     if (playerControls.left) {
-        playerVelocity.x = -moveSpeed;
-    } else if (playerControls.right) {
-        playerVelocity.x = moveSpeed;
-    } else {
-        playerVelocity.x *= 0.9; // Friction
+        playerVelocity.x = -MOVE_SPEED;
+    }
+    if (playerControls.right) {
+        playerVelocity.x = MOVE_SPEED;
     }
     
-    // Apply gravity
-    playerVelocity.y -= gravity;
+    // Handle jumping
+    if (playerControls.jump && playerCube.position.y <= 0.25) {
+        playerVelocity.y = JUMP_FORCE;
+        playerControls.jump = false; // Reset jump to prevent continuous jumping
+        
+        // Play jump sound
+        if (window.soundManager) {
+            window.soundManager.play('jump');
+        }
+    }
     
     // Update position
-    playerCube.position.x += playerVelocity.x;
-    playerCube.position.y += playerVelocity.y;
+    playerCube.position.x += playerVelocity.x * deltaTime;
+    playerCube.position.y += playerVelocity.y * deltaTime;
     
-    // Constrain to arena bounds
-    const halfArena = ARENA_SIZE / 2 - CUBE_SIZE / 2;
+    // Keep player within arena bounds
+    const halfArena = ARENA_SIZE / 2;
     playerCube.position.x = Math.max(-halfArena, Math.min(halfArena, playerCube.position.x));
     
     // Floor collision
     if (playerCube.position.y < 0.25) {
         playerCube.position.y = 0.25;
         playerVelocity.y = 0;
-        playerControls.jump = false;
+    }
+    
+    // Send position update to server if position changed
+    if (typeof socket !== 'undefined' && (playerVelocity.x !== 0 || playerVelocity.y !== 0)) {
+        socket.emit('move', {
+            x: playerCube.position.x,
+            y: playerCube.position.y,
+            z: playerCube.position.z
+        });
     }
 }
 
 // Update obstacles
 function updateObstacles() {
+    // Only player1 should update obstacle positions and sync them
+    // player2 will receive updates from the server
+    if (typeof playerRole !== 'undefined' && playerRole === 'player2') {
+        // Player 2 only checks for collisions but doesn't update positions
+        checkObstacleCollisions();
+        return;
+    }
+    
     // Get current difficulty speed multiplier
     let speedMultiplier = 1.0;
     if (window.difficultyManager) {
@@ -309,17 +358,18 @@ function updateObstacles() {
         speedMultiplier = difficultySpeed / 0.05; // Normalize to base speed
     }
     
+    // Update obstacle positions (only player1 does this)
     obstacles.forEach(obstacle => {
         // Update velocity based on difficulty
         obstacle.userData.velocity = obstacle.userData.baseSpeed * speedMultiplier;
         
         // Move obstacle down
-        obstacle.position.y -= obstacle.userData.velocity;
+        obstacle.position.y -= obstacle.userData.velocity * deltaTime;
         
         // Rotate obstacle
-        obstacle.rotation.x += obstacle.userData.rotationSpeed.x;
-        obstacle.rotation.y += obstacle.userData.rotationSpeed.y;
-        obstacle.rotation.z += obstacle.userData.rotationSpeed.z;
+        obstacle.rotation.x += obstacle.userData.rotationSpeed.x * deltaTime;
+        obstacle.rotation.y += obstacle.userData.rotationSpeed.y * deltaTime;
+        obstacle.rotation.z += obstacle.userData.rotationSpeed.z * deltaTime;
         
         // Reset if below arena
         if (obstacle.position.y < -5) {
@@ -327,11 +377,45 @@ function updateObstacles() {
             obstacle.position.y = OBSTACLE_SPAWN_HEIGHT;
             obstacle.position.z = (Math.random() - 0.5) * (ARENA_SIZE - OBSTACLE_SIZE);
         }
-        
+    });
+    
+    // Check for collisions
+    checkObstacleCollisions();
+    
+    // Sync obstacles with other players (only if we're player1)
+    if (typeof socket !== 'undefined' && typeof playerRole !== 'undefined' && playerRole === 'player1') {
+        syncTimer += deltaTime;
+        if (syncTimer >= SYNC_INTERVAL / 1000) {
+            syncTimer = 0;
+            
+            // Prepare obstacle data for syncing
+            const obstacleData = obstacles.map(obstacle => ({
+                position: {
+                    x: obstacle.position.x,
+                    y: obstacle.position.y,
+                    z: obstacle.position.z
+                },
+                rotation: {
+                    x: obstacle.rotation.x,
+                    y: obstacle.rotation.y,
+                    z: obstacle.rotation.z
+                },
+                userData: obstacle.userData
+            }));
+            
+            // Send obstacle data to server
+            socket.emit('syncObstacles', { obstacles: obstacleData });
+        }
+    }
+}
+
+// Check for collisions with obstacles
+function checkObstacleCollisions() {
+    obstacles.forEach(obstacle => {
         // Check collision with player
         if (checkCollision(playerCube, obstacle)) {
             if (typeof socket !== 'undefined') {
-                socket.emit('collision', { player: 'player1' });
+                socket.emit('collision', { player: playerRole || 'player1' });
             }
             console.log('Player hit by obstacle!');
             
@@ -369,6 +453,9 @@ function checkCollision(cube, obstacle) {
 // Animation loop
 function animate() {
     requestAnimationFrame(animate);
+    
+    deltaTime = clock.getDelta();
+    lastTime = clock.elapsedTime;
     
     if (gameActive) {
         updatePlayerPosition();
@@ -515,15 +602,42 @@ window.gameModule = {
         }
     },
     handlePlayerHit: (data) => {
-        console.log(`Player ${data.player} was hit!`);
-        // Stop scoring if this player was hit
-        if (data.player === 'player1') {
-            stopScoring();
+        gameActive = false;
+        stopScoring();
+        
+        // Update high score if current score is higher
+        if (currentScore > highScore) {
+            highScore = currentScore;
+            updateHighScoreDisplay();
+        }
+    },
+    // Update obstacles from server data (for player2)
+    updateObstaclesFromServer: (obstacleData) => {
+        if (!obstacleData || obstacleData.length === 0 || obstacles.length === 0) {
+            console.log('Invalid obstacle data or no obstacles to update');
+            return;
+        }
+        
+        console.log('Updating obstacles from server data');
+        
+        // Update each obstacle position and rotation
+        for (let i = 0; i < Math.min(obstacleData.length, obstacles.length); i++) {
+            const serverObstacle = obstacleData[i];
+            const clientObstacle = obstacles[i];
             
-            // Update high score if current score is higher
-            if (currentScore > highScore) {
-                highScore = currentScore;
-                updateHighScoreDisplay();
+            // Update position
+            clientObstacle.position.x = serverObstacle.position.x;
+            clientObstacle.position.y = serverObstacle.position.y;
+            clientObstacle.position.z = serverObstacle.position.z;
+            
+            // Update rotation
+            clientObstacle.rotation.x = serverObstacle.rotation.x;
+            clientObstacle.rotation.y = serverObstacle.rotation.y;
+            clientObstacle.rotation.z = serverObstacle.rotation.z;
+            
+            // Update userData if available
+            if (serverObstacle.userData) {
+                clientObstacle.userData = serverObstacle.userData;
             }
         }
     }

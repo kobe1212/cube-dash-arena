@@ -1,0 +1,17 @@
+{
+  "name": "cube-dash-arena",
+  "version": "1.0.0",
+  "description": "A fast-paced multiplayer 3D dodge game",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

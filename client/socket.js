@@ -1,12 +1,20 @@
 // Socket.IO client setup
 let socket;
 let playerId;
+let playerRole = null; // 'player1' or 'player2'
 let gameStarted = false;
 
 // Initialize socket connection when document is loaded
 document.addEventListener('DOMContentLoaded', () => {
     // Connect to the server
-    socket = io();
+    connectToServer();
+});
+
+// Connect to the server
+function connectToServer() {
+    // Connect to the server (use the current host in production)
+    const serverUrl = window.location.hostname === 'localhost' ? 'http://localhost:3001' : window.location.origin;
+    socket = io(serverUrl);
     
     // Handle connection event
     socket.on('connect', () => {
@@ -17,10 +25,29 @@ document.addEventListener('DOMContentLoaded', () => {
         createGameUI();
     });
     
+    // Handle player role assignment
+    socket.on('playerRole', (data) => {
+        console.log('Assigned role:', data.role);
+        playerRole = data.role;
+        
+        // If we're player2, request current obstacle state
+        if (playerRole === 'player2') {
+            socket.emit('requestObstacles');
+        }
+    });
+    
     // Handle opponent movement
     socket.on('move', (data) => {
         if (window.gameModule) {
             window.gameModule.setOpponentPosition(data);
+        }
+    });
+    
+    // Handle obstacle updates from server
+    socket.on('obstaclesUpdate', (data) => {
+        console.log('Received obstacle update from server');
+        if (window.gameModule && playerRole === 'player2') {
+            window.gameModule.updateObstaclesFromServer(data.obstacles);
         }
     });
     
@@ -73,7 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
             pauseGame();
         }
     });
-});
+}
 
 // Create game UI elements
 function createGameUI() {
