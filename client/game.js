@@ -295,7 +295,7 @@ function onWindowResize() {
 // Update player position based on controls
 function updatePlayerPosition() {
     // Apply gravity
-    playerVelocity.y -= gravity * deltaTime;
+    playerVelocity.y -= gravity;
     
     // Handle left/right movement
     playerVelocity.x = 0;
@@ -318,8 +318,8 @@ function updatePlayerPosition() {
     }
     
     // Update position
-    playerCube.position.x += playerVelocity.x * deltaTime;
-    playerCube.position.y += playerVelocity.y * deltaTime;
+    playerCube.position.x += playerVelocity.x;
+    playerCube.position.y += playerVelocity.y;
     
     // Keep player within arena bounds
     const halfArena = ARENA_SIZE / 2;
@@ -364,12 +364,12 @@ function updateObstacles() {
         obstacle.userData.velocity = obstacle.userData.baseSpeed * speedMultiplier;
         
         // Move obstacle down
-        obstacle.position.y -= obstacle.userData.velocity * deltaTime;
+        obstacle.position.y -= obstacle.userData.velocity;
         
         // Rotate obstacle
-        obstacle.rotation.x += obstacle.userData.rotationSpeed.x * deltaTime;
-        obstacle.rotation.y += obstacle.userData.rotationSpeed.y * deltaTime;
-        obstacle.rotation.z += obstacle.userData.rotationSpeed.z * deltaTime;
+        obstacle.rotation.x += obstacle.userData.rotationSpeed.x;
+        obstacle.rotation.y += obstacle.userData.rotationSpeed.y;
+        obstacle.rotation.z += obstacle.userData.rotationSpeed.z;
         
         // Reset if below arena
         if (obstacle.position.y < -5) {
@@ -384,8 +384,8 @@ function updateObstacles() {
     
     // Sync obstacles with other players (only if we're player1)
     if (typeof socket !== 'undefined' && typeof playerRole !== 'undefined' && playerRole === 'player1') {
-        syncTimer += deltaTime;
-        if (syncTimer >= SYNC_INTERVAL / 1000) {
+        syncTimer++;
+        if (syncTimer >= 6) { // Sync approximately every 6 frames (at 60fps = ~100ms)
             syncTimer = 0;
             
             // Prepare obstacle data for syncing
