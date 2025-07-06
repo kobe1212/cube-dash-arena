@@ -36,75 +36,6 @@ export class SoundManager {
             oscillator.stop(time + 0.2);
         });
         
-        // Player joined sound - a welcoming chime
-        this.createSynthSound('playerJoined', (time) => {
-            const oscillator = this.audioContext.createOscillator();
-            const gainNode = this.audioContext.createGain();
-            
-            oscillator.type = 'sine';
-            oscillator.frequency.setValueAtTime(523.25, time); // C5
-            oscillator.frequency.setValueAtTime(659.25, time + 0.1); // E5
-            oscillator.frequency.setValueAtTime(783.99, time + 0.2); // G5
-            
-            gainNode.gain.setValueAtTime(this.volume * 0.7, time);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
-            
-            oscillator.connect(gainNode);
-            gainNode.connect(this.audioContext.destination);
-            
-            oscillator.start(time);
-            oscillator.stop(time + 0.3);
-        });
-        
-        // Game starting countdown sound
-        this.createSynthSound('gameStarting', (time) => {
-            const oscillator = this.audioContext.createOscillator();
-            const gainNode = this.audioContext.createGain();
-            
-            oscillator.type = 'square';
-            oscillator.frequency.setValueAtTime(440, time); // A4
-            oscillator.frequency.setValueAtTime(440, time + 0.1);
-            oscillator.frequency.setValueAtTime(0, time + 0.15);
-            oscillator.frequency.setValueAtTime(440, time + 0.2);
-            oscillator.frequency.setValueAtTime(440, time + 0.3);
-            oscillator.frequency.setValueAtTime(0, time + 0.35);
-            oscillator.frequency.setValueAtTime(880, time + 0.4); // A5
-            
-            gainNode.gain.setValueAtTime(this.volume * 0.6, time);
-            gainNode.gain.setValueAtTime(this.volume * 0.6, time + 0.1);
-            gainNode.gain.setValueAtTime(0, time + 0.15);
-            gainNode.gain.setValueAtTime(this.volume * 0.6, time + 0.2);
-            gainNode.gain.setValueAtTime(this.volume * 0.6, time + 0.3);
-            gainNode.gain.setValueAtTime(0, time + 0.35);
-            gainNode.gain.setValueAtTime(this.volume * 0.8, time + 0.4);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, time + 0.7);
-            
-            oscillator.connect(gainNode);
-            gainNode.connect(this.audioContext.destination);
-            
-            oscillator.start(time);
-            oscillator.stop(time + 0.7);
-        });
-        
-        // Opponent hit sound
-        this.createSynthSound('opponentHit', (time) => {
-            const oscillator = this.audioContext.createOscillator();
-            const gainNode = this.audioContext.createGain();
-            
-            oscillator.type = 'sawtooth';
-            oscillator.frequency.setValueAtTime(220, time);
-            oscillator.frequency.exponentialRampToValueAtTime(110, time + 0.3);
-            
-            gainNode.gain.setValueAtTime(this.volume * 0.5, time);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
-            
-            oscillator.connect(gainNode);
-            gainNode.connect(this.audioContext.destination);
-            
-            oscillator.start(time);
-            oscillator.stop(time + 0.3);
-        });
-        
         // Collision sound - a noise burst
         this.createSynthSound('collision', (time) => {
             const bufferSize = this.audioContext.sampleRate * 0.3; // 0.3 seconds
@@ -180,6 +111,23 @@ export class SoundManager {
         this.sounds[name] = callback;
     }
     
+    // Play sound methods
+    playJumpSound() {
+        this.play('jump');
+    }
+    
+    playCollisionSound() {
+        this.play('collision');
+    }
+    
+    playGameOverSound() {
+        this.play('gameOver');
+    }
+    
+    playGameStartSound() {
+        this.play('gameStart');
+    }
+    
     // Play a sound by name
     play(name) {
         if (this.muted) return;
@@ -203,43 +151,31 @@ export class SoundManager {
     // Play jump sound
     playJumpSound() {
         if (this.muted) return;
-        this.playSound('jump');
+        this.play('jump');
     }
     
     // Play collision sound
     playCollisionSound() {
         if (this.muted) return;
-        this.playSound('collision');
+        this.play('collision');
     }
     
     // Play game over sound
     playGameOverSound() {
         if (this.muted) return;
-        this.playSound('gameOver');
+        this.play('gameOver');
     }
     
     // Play game start sound
     playGameStartSound() {
         if (this.muted) return;
-        this.playSound('gameStart');
-    }
-    
-    // Play player joined sound
-    playPlayerJoinedSound() {
-        if (this.muted) return;
-        this.playSound('playerJoined');
-    }
-    
-    // Play game starting countdown sound
-    playGameStartingSound() {
-        if (this.muted) return;
-        this.playSound('gameStarting');
+        this.play('gameStart');
     }
     
     // Play opponent hit sound
     playOpponentHitSound() {
         if (this.muted) return;
-        this.playSound('opponentHit');
+        this.play('opponentHit');
     }
     
     // Toggle mute state
@@ -250,34 +186,18 @@ export class SoundManager {
     
     // Create mute toggle button
     createMuteButton() {
-        const muteButton = document.createElement('button');
-        muteButton.id = 'mute-button';
-        muteButton.className = 'game-ui';
-        muteButton.style.position = 'absolute';
-        muteButton.style.bottom = '15px';
-        muteButton.style.left = '15px';
-        muteButton.style.padding = '8px 12px';
-        muteButton.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
-        muteButton.style.color = '#fff';
-        muteButton.style.border = 'none';
-        muteButton.style.borderRadius = '5px';
-        muteButton.style.fontSize = '14px';
-        muteButton.style.cursor = 'pointer';
-        muteButton.textContent = '🔊 Sound ON';
-        
-        muteButton.addEventListener('click', () => this.toggleMute());
-        
-        document.body.appendChild(muteButton);
+        const muteButton = document.getElementById('muteButton');
+        if (muteButton) {
+            muteButton.addEventListener('click', () => this.toggleMute());
+            this.updateMuteButton();
+        }
     }
     
     // Update mute button text based on mute state
     updateMuteButton() {
-        const muteButton = document.getElementById('mute-button');
+        const muteButton = document.getElementById('muteButton');
         if (muteButton) {
-            muteButton.textContent = this.muted ? '🔇 Sound OFF' : '🔊 Sound ON';
+            muteButton.textContent = this.muted ? '🔇' : '🔊';
         }
     }
 }
-
-// Create global sound manager instance
-window.soundManager = new SoundManager();

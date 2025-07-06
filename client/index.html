@@ -1,26 +1,371 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cube Dash Arena</title>
-  <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Cube Dash Arena</title>
+    <meta http-equiv="refresh" content="0;url=/lobby.html">
+    <style>
+        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; background-color: #000; }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; }
+        #score { font-size: 24px; }
+        #level { margin-top: 5px; }
+        #playerCount { margin-top: 5px; }
+        #waitingMessage { display: none; margin-top: 20px; padding: 10px; background-color: rgba(0,0,0,0.5); }
+        #gameOver { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 48px; color: white; background-color: rgba(0,0,0,0.7); padding: 20px; border-radius: 10px; }
+        #restartButton { display: none; position: absolute; top: 60%; left: 50%; transform: translate(-50%, -50%); font-size: 24px; padding: 10px 20px; cursor: pointer; }
+        #controls { position: absolute; bottom: 10px; left: 10px; color: white; background-color: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; }
+        #muteButton { position: absolute; top: 10px; right: 10px; font-size: 24px; background: none; border: none; color: white; cursor: pointer; }
+        #debugInfo { position: absolute; bottom: 10px; right: 10px; color: white; background-color: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; z-index: 1000; }
+        #loadingOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; font-size: 24px; z-index: 2000; }
+        #loadingProgress { width: 50%; height: 20px; background-color: #333; margin-top: 20px; border-radius: 10px; overflow: hidden; }
+        #loadingBar { width: 0%; height: 100%; background-color: #4CAF50; transition: width 0.3s; }
+    </style>
 </head>
 <body>
-  <!-- Game controls info -->
-  <div id="controls-info" class="game-ui">
-    <p>Controls:<br>
-    ← → or A/D: Move<br>
-    ↑ or W or Space: Jump</p>
-  </div>
-  
-  <!-- Game scripts -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="textures.js"></script>
-  <script src="sounds.js"></script>
-  <script src="difficulty.js"></script>
-  <script src="game.js"></script>
-  <script src="socket.js"></script>
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay">
+        <div>Loading Cube Dash Arena...</div>
+        <div id="loadingProgress">
+            <div id="loadingBar"></div>
+        </div>
+        <div id="loadingStatus">Initializing...</div>
+    </div>
+    
+    <!-- WebGL Support Check -->
+    <script>
+        // Update loading status
+        function updateLoadingStatus(message, percent) {
+            const status = document.getElementById('loadingStatus');
+            const bar = document.getElementById('loadingBar');
+            if (status) status.textContent = message;
+            if (bar) bar.style.width = percent + '%';
+        }
+        
+        // Force a clean slate by removing any existing canvases
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, cleaning up any existing WebGL contexts');
+            updateLoadingStatus('Cleaning up previous contexts...', 10);
+            const existingCanvases = document.querySelectorAll('canvas');
+            existingCanvases.forEach(canvas => {
+                console.log('Removing existing canvas');
+                canvas.parentNode?.removeChild(canvas);
+            });
+            
+            // Check WebGL support
+            if (window.webGLChecked) return;
+            window.webGLChecked = true;
+            
+            updateLoadingStatus('Checking WebGL support...', 20);
+            
+            // Declare gl variable outside the try block so it's accessible later
+            let gl = null;
+            let testCanvas = null;
+            
+            try {
+                testCanvas = document.createElement('canvas');
+                gl = testCanvas.getContext('webgl', { failIfMajorPerformanceCaveat: true }) || 
+                     testCanvas.getContext('experimental-webgl', { failIfMajorPerformanceCaveat: true });
+                
+                if (!gl) {
+                    updateLoadingStatus('WebGL not supported in your browser!', 0);
+                    alert('WebGL is not supported in your browser. Please try a different browser.');
+                    console.error('WebGL not supported');
+                } else {
+                    updateLoadingStatus('WebGL supported!', 30);
+                    console.log('WebGL supported!');
+                }
+            } catch (e) {
+                updateLoadingStatus('WebGL error: ' + e.message, 0);
+                alert('Error initializing WebGL: ' + e.message);
+                console.error('WebGL error:', e);
+            }
+            
+            // Clean up test context if gl exists
+            if (typeof gl !== 'undefined' && gl) {
+                try {
+                    const loseExt = gl.getExtension('WEBGL_lose_context');
+                    if (loseExt) {
+                        loseExt.loseContext();
+                    }
+                } catch (glError) {
+                    console.warn('Error cleaning up WebGL context:', glError);
+                }
+            }
+            
+            console.log('WebGL support confirmed');
+            return true;
+        });
+    </script>
+    
+    <!-- UI Elements -->
+    <div id="ui">
+        <div id="score">0</div>
+        <div id="level">Level: 1</div>
+        <div id="playerCount">Players: 1</div>
+        <div id="waitingMessage">Waiting for another player...</div>
+    </div>
+    
+    <div id="gameOver"></div>
+    <button id="restartButton">Restart</button>
+    
+    <div id="controls">
+        <div>Move: Arrow Keys or WASD</div>
+        <div>Jump: Space or Up Arrow</div>
+    </div>
+    
+    <button id="muteButton">🔊</button>
+    
+    <!-- Debug info panel -->
+    <div id="debugInfo">
+        <div>Animation: <span id="animStatus">Waiting...</span></div>
+        <div>FPS: <span id="fpsCounter">0</span></div>
+        <div>Renderer: <span id="rendererStatus">Initializing...</span></div>
+        <div>Errors: <span id="errorLog" style="color: red;"></span></div>
+        <button id="forceStart" style="margin-top: 10px; padding: 5px;">Force Start Game</button>
+        <div style="color:green">Module loaded!</div>
+    </div>
+    
+    <!-- Import THREE.js with local fallback -->
+    <script>
+        // Update loading status
+        updateLoadingStatus('Loading THREE.js...', 40);
+        
+        // Function to load THREE.js
+        function loadThreeJs() {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.152.2/three.min.js';
+                script.onload = () => {
+                    console.log('THREE.js loaded successfully from CDN');
+                    updateLoadingStatus('THREE.js loaded successfully!', 60);
+                    resolve(true);
+                };
+                script.onerror = () => {
+                    console.error('Failed to load THREE.js from CDN');
+                    updateLoadingStatus('Failed to load THREE.js from CDN. Trying local fallback...', 40);
+                    // Try local fallback
+                    const fallbackScript = document.createElement('script');
+                    fallbackScript.src = '/three.min.js'; // Local fallback
+                    fallbackScript.onload = () => {
+                        console.log('THREE.js loaded from local fallback');
+                        updateLoadingStatus('THREE.js loaded from local fallback', 60);
+                        resolve(true);
+                    };
+                    fallbackScript.onerror = () => {
+                        console.error('Failed to load THREE.js from local fallback');
+                        updateLoadingStatus('Failed to load THREE.js!', 0);
+                        reject(new Error('Failed to load THREE.js from all sources'));
+                    };
+                    document.head.appendChild(fallbackScript);
+                };
+                document.head.appendChild(script);
+            });
+        }
+        
+        // Load THREE.js and update UI
+        window.threeJsLoaded = false;
+        loadThreeJs()
+            .then(() => {
+                window.threeJsLoaded = true;
+                if (document.getElementById('errorLog')) {
+                    document.getElementById('errorLog').textContent = 'THREE.js loaded: v' + THREE.REVISION;
+                    document.getElementById('errorLog').style.color = 'green';
+                }
+            })
+            .catch(err => {
+                console.error('THREE.js loading error:', err);
+                if (document.getElementById('errorLog')) {
+                    document.getElementById('errorLog').textContent = 'THREE.js failed to load: ' + err.message;
+                    document.getElementById('errorLog').style.color = 'red';
+                }
+            });
+    </script>
+    
+    <!-- Direct WebGL test to verify THREE.js is working -->
+    <script>
+        // Wait for THREE.js to load
+        window.addEventListener('load', function() {
+            if (!window.THREE) {
+                console.error('THREE.js not loaded!');
+                document.getElementById('errorLog').textContent = 'THREE.js not loaded!';
+                document.getElementById('errorLog').style.color = 'red';
+              // WebGL capability check without creating visible test objects
+            try {
+                console.log('Checking WebGL capability');
+                
+                // Just verify THREE.js is working without creating visible objects
+                if (window.THREE) {
+                    console.log('THREE.js is available, version:', THREE.REVISION);
+                    
+                    // Test if WebGL is supported without creating visible elements
+                    const testRenderer = new THREE.WebGLRenderer({ 
+                        antialias: true,
+                        alpha: true
+                    });
+                    testRenderer.setSize(1, 1); // Minimal size, not visible
+                    
+                    // Test if the renderer was created successfully
+                    if (testRenderer) {
+                        console.log('WebGL renderer created successfully');
+                    }
+                    
+                    // No need to add to DOM or create visible objects
+                    console.log('WebGL capability check completed successfully');
+                } else {
+                    throw new Error('THREE.js not available');
+                }
+            } catch (error) {
+                console.error('Error in WebGL capability check:', error);
+                document.getElementById('errorLog').textContent = 'WebGL Error: ' + error.message;
+            }    document.getElementById('errorLog').style.color = 'red';
+            }
+        });
+    </script>
+    
+    <!-- Import Socket.IO -->
+    <script src="/socket.io/socket.io.js"></script>
+    
+    <!-- Import main module with cache busting -->
+    <script>
+        // Clear any previous module cache
+        try {
+            window.sessionStorage.clear();
+            window.localStorage.clear();
+            console.log('Cache cleared');
+        } catch (e) {
+            console.warn('Could not clear cache:', e);
+        }
+        
+        // Enhanced global error handler with detailed error information
+        window.addEventListener('error', function(event) {
+            // Extract detailed error information
+            const errorObj = event.error || {};
+            const errorDetails = {
+                message: event.message || 'Unknown error',
+                filename: event.filename,
+                lineno: event.lineno,
+                colno: event.colno,
+                stack: errorObj.stack || 'No stack trace available'
+            };
+            
+            // Log detailed error information to console
+            console.error('Global error:', errorDetails);
+            
+            // Update error log in UI
+            const errorLog = document.getElementById('errorLog');
+            if (errorLog) {
+                errorLog.textContent = errorDetails.message + ' (at ' + 
+                    (errorDetails.filename ? errorDetails.filename.split('/').pop() : 'unknown') + 
+                    ':' + errorDetails.lineno + ')';
+                errorLog.style.color = 'red';
+                
+                // Add tooltip with stack trace
+                errorLog.title = errorDetails.stack;
+            }
+        });
+        
+        // Also catch unhandled promise rejections
+        window.addEventListener('unhandledrejection', function(event) {
+            const reason = event.reason;
+            const errorDetails = {
+                message: reason && reason.message ? reason.message : 'Unhandled Promise Rejection',
+                stack: reason && reason.stack ? reason.stack : 'No stack trace available'
+            };
+            
+            console.error('Unhandled Promise Rejection:', errorDetails);
+            
+            const errorLog = document.getElementById('errorLog');
+            if (errorLog) {
+                errorLog.textContent = 'Promise Error: ' + errorDetails.message;
+                errorLog.style.color = 'red';
+                errorLog.title = errorDetails.stack;
+            }
+        });
+        
+        // Add Force Start button functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const forceStartButton = document.getElementById('forceStart');
+            if (forceStartButton) {
+                forceStartButton.addEventListener('click', function() {
+                    console.log('Force Start button clicked');
+                    
+                    // Import the emergency module
+                    import('./modules/forceStart.js')
+                        .then(module => {
+                            console.log('Force Start module loaded');
+                            return module.forceStart();
+                        })
+                        .then(result => {
+                            console.log('Force Start result:', result);
+                            if (!result) {
+                                console.log('Force Start failed, creating emergency scene');
+                                import('./modules/forceStart.js').then(module => module.createEmergencyScene());
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Force Start error:', error);
+                            document.getElementById('errorLog').textContent = 'Force Start error: ' + error.message;
+                        });
+                });
+            }
+        });
+    </script>
+    
+    <!-- Import main ES module with cache busting -->
+    <script type="module">
+        // Wait for THREE.js to load before importing modules
+        function waitForThreeJs() {
+            return new Promise((resolve) => {
+                const checkInterval = setInterval(() => {
+                    if (window.threeJsLoaded && window.THREE) {
+                        clearInterval(checkInterval);
+                        updateLoadingStatus('THREE.js ready, loading game modules...', 70);
+                        resolve();
+                    }
+                }, 100);
+            });
+        }
+        
+        // Clear caches on page load
+        sessionStorage.clear();
+        localStorage.clear();
+        console.log('Cleared session and local storage');
+        updateLoadingStatus('Cache cleared', 65);
+        
+        // Wait for THREE.js then import main module
+        waitForThreeJs()
+            .then(() => {
+                updateLoadingStatus('Importing game modules...', 75);
+                // Import main module with cache busting
+                return import('./modules/main.js?v=' + new Date().getTime());
+            })
+            .then(() => {
+                console.log('Main module loaded successfully');
+                updateLoadingStatus('Game modules loaded successfully!', 90);
+                document.getElementById('debugInfo').innerHTML += '<div style="color:green">Module loaded!</div>';
+                
+                // Hide loading overlay after a short delay
+                setTimeout(() => {
+                    const overlay = document.getElementById('loadingOverlay');
+                    if (overlay) {
+                        overlay.style.opacity = '0';
+                        overlay.style.transition = 'opacity 0.5s';
+                        setTimeout(() => {
+                            overlay.style.display = 'none';
+                        }, 500);
+                    }
+                    updateLoadingStatus('Game ready!', 100);
+                }, 1000);
+            })
+            .catch(error => {
+                console.error('Error loading main module:', error);
+                updateLoadingStatus('Error loading game: ' + error.message, 0);
+                document.getElementById('debugInfo').innerHTML += '<div style="color:red">Module error: ' + error.message + '</div>';
+            });
+    </script>
 </body>
 </html>

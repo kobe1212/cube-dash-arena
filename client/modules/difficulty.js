@@ -1,5 +1,5 @@
 // Difficulty manager for Cube Dash Arena
-class DifficultyManager {
+export class DifficultyManager {
     constructor() {
         this.baseObstacleSpeed = 0.05;
         this.maxObstacleSpeed = 0.15;
@@ -56,21 +56,10 @@ class DifficultyManager {
     
     // Create level display element
     createLevelDisplay() {
-        const levelDisplay = document.createElement('div');
-        levelDisplay.id = 'level-display';
-        levelDisplay.className = 'game-ui';
-        levelDisplay.style.position = 'absolute';
-        levelDisplay.style.top = '15px';
-        levelDisplay.style.right = '15px';
-        levelDisplay.style.padding = '10px';
-        levelDisplay.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
-        levelDisplay.style.color = '#fff';
-        levelDisplay.style.borderRadius = '5px';
-        levelDisplay.style.fontSize = '16px';
-        levelDisplay.style.fontWeight = 'bold';
-        levelDisplay.textContent = 'Level: 1';
-        
-        document.body.appendChild(levelDisplay);
+        const levelDisplay = document.getElementById('level-display');
+        if (levelDisplay) {
+            levelDisplay.textContent = `Level: ${this.currentLevel}`;
+        }
     }
     
     // Update level display
@@ -78,20 +67,20 @@ class DifficultyManager {
         const levelDisplay = document.getElementById('level-display');
         if (levelDisplay) {
             levelDisplay.textContent = `Level: ${this.currentLevel}`;
-            
-            // Flash effect for level up
-            if (this.currentLevel > 1) {
-                levelDisplay.style.backgroundColor = 'rgba(255, 215, 0, 0.8)';
-                levelDisplay.style.color = '#000';
-                
-                setTimeout(() => {
-                    levelDisplay.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
-                    levelDisplay.style.color = '#fff';
-                }, 500);
-            }
         }
     }
+    
+    // Get current level
+    getCurrentLevel() {
+        return this.currentLevel;
+    }
+    
+    // Get obstacle spawn rate based on current level
+    getObstacleSpawnRate() {
+        // Base spawn rate is 2 seconds, decreasing to 0.8 seconds at max level
+        const baseRate = 2000;
+        const minRate = 800;
+        const levelFactor = (this.currentLevel - 1) / 9; // 0 to 1 based on level 1-10
+        return baseRate - (baseRate - minRate) * levelFactor;
+    }
 }
-
-// Create global difficulty manager instance
-window.difficultyManager = new DifficultyManager();

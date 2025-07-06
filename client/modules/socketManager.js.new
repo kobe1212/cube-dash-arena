@@ -1,0 +1,530 @@
+// Socket.io is loaded from CDN in the HTML file
+const io = window.io;
+
+// Import constants for player positioning and THREE.js for color handling
+import { GROUND_LEVEL, PLAYER_SIZE } from './constants.js';
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.module.js';
+
+export class SocketManager {
+    constructor(playerName = 'Player') {
+        this.socket = null;
+        this.isConnected = false;
+        this.gameManager = null;
+        this.isPlayer1 = false; // Whether this client is player 1 (host)
+        this.playerId = null;  // Unique ID for this player
+        this.playerCount = 0;  // Initialize player count to 0
+        
+        // Ensure playerName is a string, not an HTML element
+        if (playerName && typeof playerName === 'object' && playerName.textContent) {
+            this.playerName = playerName.textContent;
+        } else {
+            this.playerName = String(playerName || 'Player');
+        }
+        
+        this.playerCountElement = document.getElementById('playerCount');
+        this.waitingMessageElement = document.getElementById('waitingMessage');
+        this.playerNameElement = document.getElementById('playerName');
+        
+        // Make playerCount accessible globally for other components
+        if (window) {
+            window.currentPlayerCount = 0;
+        }
+        
+        console.log('SocketManager initialized with player name:', this.playerName);
+    }
+    
+    connect() {
+        // Connect to the server
+        this.socket = io();
+        
+        // Setup socket event handlers
+        this.setupSocketEvents();
+        
+        console.log('Socket connection initiated');
+    }
+    
+    setGameManager(gameManager) {
+        this.gameManager = gameManager;
+        console.log('Game manager set in SocketManager');
+    }
+    
+    // Update player role display in UI
+    updatePlayerRoleDisplay() {
+        if (!this.waitingMessageElement) return;
+        
+        if (this.playerCount < 2) {
+            this.waitingMessageElement.textContent = 'Waiting for another player to join...';
+            this.waitingMessageElement.style.display = 'block';
+        } else {
+            this.waitingMessageElement.style.display = 'none';
+        }
+        
+        // Update player count display
+        if (this.playerCountElement) {
+            this.playerCountElement.textContent = `Players: ${this.playerCount}/2`;
+        }
+        
+        // Update global player count
+        if (window) {
+            window.currentPlayerCount = this.playerCount;
+        }
+    }
+    
+    // Create opponent player with proper color and position
+    createOpponentPlayer(initialPosition = null) {
+        if (!this.gameManager) {
+            console.error('Cannot create opponent: gameManager not initialized');
+            return null;
+        }
+        
+        // Import Player class if needed
+        const Player = window.Player || null;
+        if (!Player) {
+            console.error('Cannot create opponent: Player class not available');
+            return null;
+        }
+        
+        try {
+            console.log('Creating opponent player...');
+            
+            // FIRST: Clean up any existing opponent cubes to avoid duplicates
+            // 1. Remove opponent from game manager if it exists
+            if (this.gameManager.opponent) {
+                if (this.gameManager.opponent.cube) {
+                    console.log('Removing existing opponent cube from scene');
+                    this.gameManager.sceneManager.scene.remove(this.gameManager.opponent.cube);
+                }
+                this.gameManager.opponent = null;
+            }
+            
+            // 2. Check for any stray opponent cubes in the scene and remove them
+            if (this.gameManager.sceneManager && this.gameManager.sceneManager.scene) {
+                const existingOpponentCubes = this.gameManager.sceneManager.scene.children.filter(obj => obj.name === 'OpponentCube');
+                existingOpponentCubes.forEach(cube => {
+                    console.log('Removing stray opponent cube from scene');
+                    this.gameManager.sceneManager.scene.remove(cube);
+                });
+            }
+            
+            // 3. Create the opponent player with the correct color (isOpponent = true)
+            const isOpponent = true;
+            const opponent = new Player(
+                this.gameManager.sceneManager.scene,
+                isOpponent,
+                this.gameManager.sceneManager.textureUtils,
+                this.gameManager.soundManager
+            );
+            
+            // 4. Set opponent position if provided
+            if (initialPosition) {
+                opponent.setPosition(initialPosition);
+            } else {
+                // Default position for opponent (opposite side of arena)
+                opponent.position.x = -5;
+                opponent.position.y = GROUND_LEVEL + PLAYER_SIZE/2;
+                opponent.position.z = 0;
+            }
+            
+            // 5. Force opponent cube color to red
+            if (opponent.cube && opponent.cube.material) {
+                opponent.cube.material.color.setHex(0xff0000); // Bright red
+                console.log('Set opponent cube color to red');
+            }
+            
+            // 6. Assign opponent to game manager
+            this.gameManager.opponent = opponent;
+            
+            console.log('Opponent player created successfully');
+            return opponent;
+        } catch (error) {
+            console.error('Error creating opponent player:', error);
+            return null;
+        }
+    }
+    
+    setupSocketEvents() {
+        // Connection established
+        this.socket.on('connect', () => {
+            this.isConnected = true;
+            console.log('Connected to server');
+            
+            // Join the lobby with player name after connection
+            setTimeout(() => {
+                this.socket.emit('joinLobby', { name: this.playerName });
+                console.log('Joined lobby as:', this.playerName);
+            }, 500);
+        });
+        
+        // Disconnection
+        this.socket.on('disconnect', () => {
+            this.isConnected = false;
+            console.log('Disconnected from server');
+        });
+        
+        // Player joined event - contains player info including role
+        this.socket.on('playerJoined', (data) => {
+            console.log('Player joined event received:', data);
+            
+            // Update player role
+            if (data.id === this.socket.id) {
+                this.isPlayer1 = data.isPlayer1 || data.role === 'player1';
+                this.playerId = data.id;
+                
+                // Update player name in UI to include role
+                if (this.playerNameElement) {
+                    const roleText = this.isPlayer1 ? 'Player 1 (Host)' : 'Player 2';
+                    
+                    // Clean up the display name - remove any 'Player:' prefix
+                    let displayName = this.playerName;
+                    if (displayName.includes('Player:')) {
+                        displayName = displayName.split('Player:')[1].trim();
+                    }
+                    
+                    // Update UI with player name and role
+                    this.playerNameElement.textContent = `${roleText}: ${displayName}`;
+                }
+                
+                console.log(`You joined as: ${this.isPlayer1 ? 'Player 1 (Host)' : 'Player 2'}`);
+                
+                // Update player role display in UI
+                this.updatePlayerRoleDisplay();
+            }
+        });
+        
+        // Player count update (legacy event)
+        this.socket.on('playerCount', (count) => {
+            console.log('Player count update received:', count);
+            
+            // Store the player count both locally and globally
+            this.playerCount = count;
+            if (window) {
+                window.currentPlayerCount = count;
+            }
+            
+            if (this.playerCountElement) {
+                this.playerCountElement.textContent = count;
+            }
+            
+            // Show/hide waiting message based on player count
+            if (this.waitingMessageElement) {
+                if (count < 2) {
+                    this.waitingMessageElement.style.display = 'block';
+                    this.waitingMessageElement.textContent = 'Waiting for another player to join...';
+                } else {
+                    this.waitingMessageElement.style.display = 'none';
+                }
+            }
+            
+            // Create opponent player ONLY when a second player connects
+            if (count >= 2 && this.gameManager) {
+                try {
+                    // Only create opponent if it doesn't exist yet
+                    if (!this.gameManager.opponent) {
+                        console.log('Creating opponent player - second player connected');
+                        this.createOpponentPlayer();
+                        console.log('Opponent created successfully, player count:', count);
+                    }
+                    
+                    // Start the game if it's not already started and we have two players
+                    if (!this.gameManager.isGameStarted) {
+                        console.log('Two players connected, starting game...');
+                        // Add a small delay to ensure everything is initialized
+                        setTimeout(() => {
+                            this.gameManager.startGame();
+                        }, 1000);
+                    }
+                } catch (error) {
+                    console.error('Error in player count handler:', error);
+                }
+            } else if (count < 2 && this.gameManager && this.gameManager.opponent) {
+                try {
+                    // Remove opponent when player count drops below 2
+                    console.log('Removing opponent player - player disconnected');
+                    if (this.gameManager.opponent.cube) {
+                        this.gameManager.sceneManager.scene.remove(this.gameManager.opponent.cube);
+                    }
+                    this.gameManager.opponent = null;
+                    console.log('Opponent removed successfully, player count:', count);
+                } catch (error) {
+                    console.error('Error removing opponent player:', error);
+                }
+            } else {
+                console.log('No action needed for player count update, count:', count, 
+                           'opponent exists:', Boolean(this.gameManager && this.gameManager.opponent));
+            }
+        });
+        
+        // Lobby update event - contains the full list of players
+        this.socket.on('lobbyUpdate', (data) => {
+            console.log('Lobby update received:', data);
+            
+            // Update player count from lobby data
+            if (this.playerCountElement && data.players) {
+                this.playerCountElement.textContent = data.players.length;
+                this.playerCount = data.players.length;
+            }
+            
+            // Show/hide waiting message based on player count
+            if (this.waitingMessageElement && data.players) {
+                this.waitingMessageElement.style.display = data.players.length < 2 ? 'block' : 'none';
+            }
+            
+            // Start the game when both players are present
+            if (data.players && data.players.length >= 2 && this.gameManager && !this.gameManager.isGameStarted) {
+                console.log('Both players present, starting game...');
+                
+                // Create opponent player if needed
+                if (!this.gameManager.opponent) {
+                    console.log('Creating opponent player from lobby update');
+                    this.createOpponentPlayer();
+                }
+                
+                // Start the game with a short delay to ensure opponent is created
+                setTimeout(() => {
+                    this.gameManager.startGame(true);
+                    
+                    // Update UI elements
+                    const animStatus = document.getElementById('animStatus');
+                    if (animStatus) {
+                        animStatus.textContent = 'Game Started!';
+                        animStatus.style.color = 'green';
+                    }
+                    
+                    // Update player role display
+                    this.updatePlayerRoleDisplay();
+                }, 1500);
+            }
+        });
+        
+        // Obstacle synchronization events
+        // Handle obstacle created by Player 1
+        this.socket.on('obstacleCreated', (obstacleData) => {
+            if (!this.isPlayer1 && this.gameManager && this.gameManager.obstacleManager) {
+                console.log('Received obstacle data from Player 1:', obstacleData);
+                // Create the obstacle in Player 2's game
+                this.gameManager.obstacleManager.createObstacleFromData(obstacleData);
+            }
+        });
+        
+        // Handle full obstacle sync from Player 1
+        this.socket.on('syncObstacles', (allObstacles) => {
+            if (!this.isPlayer1 && this.gameManager && this.gameManager.obstacleManager) {
+                console.log('Received full obstacle sync from Player 1:', allObstacles.length, 'obstacles');
+                // Sync all obstacles in Player 2's game
+                this.gameManager.obstacleManager.syncObstaclesFromData(allObstacles);
+            }
+        });
+        
+        // Player role assignment event
+        this.socket.on('playerRole', (data) => {
+            // Handle both formats of role data (for compatibility)
+            if (data.role !== undefined) {
+                this.isPlayer1 = data.role === 'player1';
+            } else if (data.isPlayer1 !== undefined) {
+                this.isPlayer1 = data.isPlayer1;
+            }
+            
+            this.playerId = data.playerId || this.socket.id;
+            const roleText = this.isPlayer1 ? 'Player 1 (Host)' : 'Player 2';
+            console.log(`Assigned role: ${roleText}`);
+            
+            // Update player name in UI to include role
+            if (this.playerNameElement) {
+                // Get current player name without any role prefix
+                let displayName = this.playerName;
+                if (displayName.includes('Player:')) {
+                    displayName = displayName.split('Player:')[1].trim();
+                }
+                
+                // Update UI with player name and role
+                this.playerNameElement.textContent = `${roleText}: ${displayName}`;
+            }
+            
+            // Update player role display in UI
+            this.updatePlayerRoleDisplay();
+            
+            // Start the game with the assigned role
+            if (this.gameManager) {
+                try {
+                    // Make sure all required components are initialized
+                    if (!this.gameManager.sceneManager || !this.gameManager.player) {
+                        console.warn('Cannot start game: required components not initialized');
+                        return;
+                    }
+                    
+                    // FIRST: Clean up any existing opponent cubes to avoid duplicates
+                    // 1. Remove opponent from game manager if it exists
+                    if (this.gameManager.opponent) {
+                        if (this.gameManager.opponent.cube) {
+                            console.log('Removing existing opponent cube from scene');
+                            this.gameManager.sceneManager.scene.remove(this.gameManager.opponent.cube);
+                        }
+                        this.gameManager.opponent = null;
+                    }
+                    
+                    // 2. Check for any stray opponent cubes in the scene and remove them
+                    const existingOpponentCubes = this.gameManager.sceneManager.scene.children.filter(obj => obj.name === 'OpponentCube');
+                    existingOpponentCubes.forEach(cube => {
+                        console.log('Removing stray opponent cube from scene');
+                        this.gameManager.sceneManager.scene.remove(cube);
+                    });
+                    
+                    // 3. Ensure local player cube is blue
+                    if (this.gameManager.player && this.gameManager.player.cube && this.gameManager.player.cube.material) {
+                        this.gameManager.player.cube.material.color.setHex(0x0000ff); // Force blue color
+                        console.log('Forced player cube color to blue');
+                    }
+                    
+                    // 4. Create opponent player if we have 2 players
+                    if (this.playerCount >= 2) {
+                        console.log('Creating opponent player after role assignment');
+                        const opponent = this.createOpponentPlayer();
+                        
+                        // Double-check the opponent color
+                        if (opponent && opponent.cube && opponent.cube.material) {
+                            opponent.cube.material.color.setHex(0xff0000); // Force red color
+                            console.log('Forced opponent cube color to red during role assignment');
+                        }
+                    }
+                    
+                    // Force scene background color
+                    if (this.gameManager.sceneManager && this.gameManager.sceneManager.scene) {
+                        this.gameManager.sceneManager.scene.background = new THREE.Color(0x87CEEB); // Sky blue
+                    }
+                    
+                    // Force renderer clear color
+                    if (this.gameManager.sceneManager && this.gameManager.sceneManager.renderer) {
+                        this.gameManager.sceneManager.renderer.setClearColor(0x87CEEB); // Sky blue
+                    }
+                    
+                    // Start the game with appropriate delay based on player role
+                    if (this.playerCount >= 2) {
+                        const startDelay = this.isPlayer1 ? 1000 : 1500; // Player 1 starts slightly earlier
+                        console.log(`Starting game as ${roleText} in ${startDelay}ms`);
+                        
+                        setTimeout(() => {
+                            this.gameManager.startGame(true);
+                            console.log(`Game started as ${roleText}`);
+                            
+                            // Force a render to ensure visual updates appear
+                            if (this.gameManager.sceneManager && this.gameManager.sceneManager.renderer) {
+                                this.gameManager.sceneManager.renderer.render(
+                                    this.gameManager.sceneManager.scene, 
+                                    this.gameManager.sceneManager.camera
+                                );
+                            }
+                        }, startDelay);
+                    } else {
+                        console.log('Waiting for second player before starting game');
+                    }
+                } catch (error) {
+                    console.error('Error in playerRole handler:', error);
+                }
+            }
+        });
+        
+        // Player movement events
+        this.socket.on('move', (data) => {
+            // Only process movement from the other player
+            const isFromOpponent = (this.isPlayer1 && data.role === 'player2') || 
+                                (!this.isPlayer1 && data.role === 'player1');
+            
+            if (isFromOpponent && this.gameManager) {
+                try {
+                    // Create opponent player if it doesn't exist yet
+                    if (!this.gameManager.opponent) {
+                        console.log('Creating opponent player from move event');
+                        this.createOpponentPlayer(data);
+                    } else if (this.gameManager.opponent.cube) {
+                        // Update opponent position
+                        this.gameManager.opponent.setPosition(data);
+                        
+                        // Ensure opponent cube is red
+                        if (this.gameManager.opponent.cube.material) {
+                            this.gameManager.opponent.cube.material.color.setHex(0xff0000);
+                        }
+                        
+                        // Log position updates occasionally for debugging (every 50 updates)
+                        if (Math.random() < 0.02) { // ~2% chance to log
+                            console.log('Opponent position updated:', data);
+                        }
+                    } else {
+                        // Recreate opponent if cube is missing
+                        console.log('Opponent cube missing, recreating from move event');
+                        this.createOpponentPlayer(data);
+                    }
+                } catch (error) {
+                    console.error('Error processing opponent movement:', error);
+                }
+            }
+        });
+        
+        // Game state events
+        this.socket.on('gameState', (state) => {
+            console.log('Game state update received:', state);
+            
+            if (this.gameManager) {
+                // Update game state
+                if (state.gameStarted !== undefined) {
+                    this.gameManager.isGameStarted = state.gameStarted;
+                }
+                
+                // Update score if provided
+                if (state.score !== undefined && this.gameManager.updateScore) {
+                    this.gameManager.updateScore(state.score);
+                }
+            }
+        });
+        
+        // Game over event
+        this.socket.on('gameOver', (data) => {
+            console.log('Game over event received:', data);
+            
+            if (this.gameManager && this.gameManager.endGame) {
+                this.gameManager.endGame(data.winner, data.score);
+            }
+        });
+    }
+    
+    // Send player position to server
+    emitPlayerMove(position) {
+        if (this.socket && this.isConnected) {
+            // Add player identification to position data
+            const moveData = {
+                ...position,
+                playerId: this.playerId,
+                role: this.isPlayer1 ? 'player1' : 'player2'
+            };
+            
+            this.socket.emit('move', moveData);
+        }
+    }
+    
+    // Send obstacle creation to server (Player 1 only)
+    emitObstacleCreated(obstacleData) {
+        if (this.socket && this.isConnected && this.isPlayer1) {
+            this.socket.emit('obstacleCreated', obstacleData);
+        }
+    }
+    
+    // Send full obstacle sync to server (Player 1 only)
+    emitSyncObstacles(allObstacles) {
+        if (this.socket && this.isConnected && this.isPlayer1) {
+            this.socket.emit('syncObstacles', allObstacles);
+        }
+    }
+    
+    // Send game state update to server
+    emitGameState(state) {
+        if (this.socket && this.isConnected) {
+            this.socket.emit('gameState', state);
+        }
+    }
+    
+    // Send game over event to server
+    emitGameOver(data) {
+        if (this.socket && this.isConnected) {
+            this.socket.emit('gameOver', data);
+        }
+    }
+}

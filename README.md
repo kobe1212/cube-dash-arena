@@ -26,7 +26,81 @@ Cube Dash Arena is a fast-paced multiplayer dodge game where two players control
 
 ---
 
+## 🚀 Running the Server
+
+### Prerequisites
+- Node.js (v14 or higher)
+- npm (v6 or higher)
+
+### Installation
+1. Clone the repository
+   ```bash
+   git clone https://github.com/yourusername/cube-dash-arena.git
+   cd cube-dash-arena
+   ```
+
+2. Install server dependencies
+   ```bash
+   cd server
+   npm install
+   cd ..
+   ```
+
+### Starting the Server
+1. From the project root directory, run:
+   ```bash
+   node server/server.js
+   ```
+   Or use the provided batch file (Windows):
+   ```bash
+   start-server.bat
+   ```
+
+2. The server will start on port 3001 by default
+   ```
+   Server listening on port 3001
+   ```
+
+3. Open your browser and navigate to:
+   ```
+   http://localhost:3001
+   ```
+
+### Multiplayer Setup
+1. Open the game in two different browser windows or on different devices connected to the same network
+2. Enter player names in each window
+3. The first player to join becomes Player 1 (Host) and can start the game
+4. The second player automatically joins as Player 2
+
+---
+
 ## 📁 Project Structure
+
+### ES Modules Version (Recommended)
+
+```
+cube-dash-arena/
+├── client/                # Frontend files
+│   ├── modules/          # ES modules directory
+│   │   ├── arena.js      # Arena creation and management
+│   │   ├── difficulty.js # Difficulty progression system
+│   │   ├── gameManager.js # Core game logic and state management
+│   │   ├── main.js       # Main entry point and initialization
+│   │   ├── obstacles.js  # Obstacle generation and management
+│   │   ├── player.js     # Player cube controls and physics
+│   │   ├── scene.js      # Three.js scene, camera, and renderer setup
+│   │   ├── socketManager.js # Socket.IO client implementation
+│   │   ├── sounds.js     # Sound effects manager
+│   │   └── textures.js   # Procedural texture generation
+│   ├── index-modules.html # ES modules entry point HTML
+│   ├── index.html        # Legacy entry point HTML
+│   └── style.css         # CSS styles
+├── server/               # Backend files
+│   └── server.js         # Express and Socket.IO server
+└── package.json          # Project dependencies
+```
+
+### Legacy Version (Original)
 
 ```
 cube-dash-arena/
@@ -44,6 +118,32 @@ cube-dash-arena/
 ```
 
 ---
+
+## 🔄 ES Modules vs Legacy Version
+
+This project has been refactored to use ES modules for better code organization, maintainability, and modern JavaScript practices.
+
+### Benefits of the ES Modules Version
+
+- **Better Encapsulation**: Each module is responsible for its own functionality with clear boundaries
+- **Explicit Dependencies**: You can see exactly what each module depends on
+- **No Global State**: Eliminated all global variables, reducing potential bugs
+- **Better Maintainability**: Code is more organized and easier to understand
+- **Modern JavaScript**: Following ES module best practices
+
+### How to Use the ES Modules Version
+
+The ES modules version is now the default version of the game. Simply open the root URL after starting the server:
+
+```
+http://localhost:3001/
+```
+
+The legacy version is still available at:
+
+```
+http://localhost:3001/index-legacy.html
+```
 
 ## 🚀 Getting Started
 
@@ -134,6 +234,32 @@ SUCCESS: The process with PID 7540 has been terminated.
 
 - Render automatically redeploys your application when you push changes to your repository
 - You can manually trigger a deployment from the Render dashboard
+
+## 🔄 Pushing Code to GitHub
+
+To push your latest code changes to GitHub, follow these steps:
+
+1. Navigate to your project directory:
+   ```
+   cd C:\Users\amiru\OneDrive\Desktop\cube-dash-arena
+   ```
+
+2. Add all changed files to staging:
+   ```
+   git add .
+   ```
+
+3. Commit your changes with a descriptive message:
+   ```
+   git commit -m "Update: latest changes to Cube Dash Arena"
+   ```
+
+4. Push your changes to the main branch:
+   ```
+   git push origin main
+   ```
+
+5. Your changes will now be available on GitHub and will trigger automatic redeployment if you're using Render.com
 
 ---
 
