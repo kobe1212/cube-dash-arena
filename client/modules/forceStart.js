@@ -1,6 +1,8 @@
 // Force Start module for Cube Dash Arena
 // This module provides emergency rendering functionality when normal initialization fails
 
+import { logError, clearErrorLog, updateErrorLog } from './utils.js';
+
 // Create a simple emergency scene with a rotating cube
 export function createEmergencyScene() {
     console.log('Creating emergency scene...');
@@ -96,15 +98,7 @@ export function createEmergencyScene() {
             cube
         };
     } catch (error) {
-        console.error('Failed to create emergency scene:', error);
-        
-        // Update error log
-        const errorLog = document.getElementById('errorLog');
-        if (errorLog) {
-            errorLog.textContent = 'Emergency scene error: ' + error.message;
-            errorLog.style.color = 'red';
-        }
-        
+        logError('Failed to create emergency scene', error);
         return null;
     }
 }
@@ -115,21 +109,14 @@ export function forceStart() {
     
     try {
         // Clear any previous errors
-        const errorLog = document.getElementById('errorLog');
-        if (errorLog) {
-            errorLog.textContent = '';
-        }
+        clearErrorLog();
         
         // Try using the game manager if available
         if (window.gameManager) {
             console.log('Using game manager to force start');
             window.gameManager.startGame(true);
             
-            const animStatus = document.getElementById('animStatus');
-            if (animStatus) {
-                animStatus.textContent = 'Forced Start';
-                animStatus.style.color = 'orange';
-            }
+            updateErrorLog('Forced Start', 'orange');
             
             return true;
         }
@@ -141,6 +128,7 @@ export function forceStart() {
             if (window.sceneManager.scene && window.sceneManager.camera) {
                 window.sceneManager.renderer.render(window.sceneManager.scene, window.sceneManager.camera);
                 
+                // Update renderer status
                 const rendererStatus = document.getElementById('rendererStatus');
                 if (rendererStatus) {
                     rendererStatus.textContent = 'Direct Render';
@@ -155,14 +143,7 @@ export function forceStart() {
         console.log('Creating emergency scene as last resort');
         return createEmergencyScene() !== null;
     } catch (error) {
-        console.error('Force start failed:', error);
-        
-        const errorLog = document.getElementById('errorLog');
-        if (errorLog) {
-            errorLog.textContent = 'Force start error: ' + error.message;
-            errorLog.style.color = 'red';
-        }
-        
+        logError('Force start failed', error);
         return false;
     }
 }

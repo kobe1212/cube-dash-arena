@@ -106,29 +106,7 @@ export class Player {
             console.error('Cannot add cube to scene: scene is not defined');
         }
         
-        // Position both players in the same arena but at different x positions
-        // This allows both players to see each other in the same scene
-        if (this.isOpponent) {
-            this.cube.position.x = 2; // Opponent positioned to the right
-            this.cube.position.z = 0; // Same z-position (depth) in the arena
-            
-            // Add interpolation properties for opponent
-            this.targetPosition = new THREE.Vector3(
-                this.cube.position.x,
-                this.cube.position.y,
-                this.cube.position.z
-            );
-            this.lastUpdateTime = Date.now();
-            this.interpolationSpeed = 0.15; // Adjust for smoother movement (0-1)
-        } else {
-            this.cube.position.x = -2; // Local player positioned to the left
-            this.cube.position.z = 0; // Same z-position (depth) in the arena
-        }
-        
-        this.cube.castShadow = true;
-        this.cube.receiveShadow = true;
-        
-        this.scene.add(this.cube);
+
     }
     
     setupControls() {

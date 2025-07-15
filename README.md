@@ -2,27 +2,33 @@
 
 Cube Dash Arena is a fast-paced multiplayer dodge game where two players control colorful cubes in a 3D arena. Players must avoid falling obstacles and survive as long as possible. The last cube standing wins the round.
 
+> **Note:** This codebase has been recently refactored to improve code organization, reduce duplication, and enhance maintainability.
+
 ## 🎮 Features
 
-- Multiplayer gameplay with Socket.IO
-- Simple movement (left, right, jump)
-- Falling obstacles with collision detection
-- Real-time sync of player states
-- Quick 30–60 second rounds
-- Low-poly visuals with textures and lighting
-- Progressive difficulty system
-- Sound effects and mute option
-- Score tracking system
+- **Multiplayer gameplay** with Socket.IO for real-time communication
+- **Simple movement** (left, right, jump) with responsive controls
+- **Dynamic obstacles** with procedural generation and collision detection
+- **Real-time synchronization** of player states and game events
+- **Quick rounds** lasting 30–60 seconds for fast-paced gameplay
+- **Low-poly aesthetics** with procedurally generated textures and dynamic lighting
+- **Progressive difficulty system** that increases challenge over time
+- **Procedural sound effects** with Web Audio API and mute option
+- **Comprehensive score tracking** with multiplayer support
+- **Robust error handling** with fallback rendering options
+- **Modular code architecture** using ES modules for maintainability
 
 ---
 
 ## 🧱 Tech Stack
 
-- **Three.js** – 3D graphics rendering
-- **Node.js + Express** – Backend server
-- **Socket.IO** – Real-time multiplayer
-- **Web Audio API** - Sound generation
-- **Canvas API** - Procedural textures
+- **Three.js** – 3D graphics rendering with WebGL
+- **ES Modules** – Modern JavaScript module system for code organization
+- **Node.js + Express** – Backend server with RESTful endpoints
+- **Socket.IO** – Real-time bidirectional event-based communication
+- **Web Audio API** – Dynamic sound generation and management
+- **Canvas API** – Procedural texture generation for low-poly aesthetics
+- **Utility Functions** – Centralized error handling and common operations
 
 ---
 
@@ -76,14 +82,16 @@ Cube Dash Arena is a fast-paced multiplayer dodge game where two players control
 
 ## 📁 Project Structure
 
-### ES Modules Version (Recommended)
+### Current Structure (ES Modules)
 
 ```
 cube-dash-arena/
 ├── client/                # Frontend files
 │   ├── modules/          # ES modules directory
 │   │   ├── arena.js      # Arena creation and management
+│   │   ├── constants.js   # Game constants and configuration
 │   │   ├── difficulty.js # Difficulty progression system
+│   │   ├── forceStart.js # Emergency rendering and fallback
 │   │   ├── gameManager.js # Core game logic and state management
 │   │   ├── main.js       # Main entry point and initialization
 │   │   ├── obstacles.js  # Obstacle generation and management
@@ -91,10 +99,12 @@ cube-dash-arena/
 │   │   ├── scene.js      # Three.js scene, camera, and renderer setup
 │   │   ├── socketManager.js # Socket.IO client implementation
 │   │   ├── sounds.js     # Sound effects manager
-│   │   └── textures.js   # Procedural texture generation
-│   ├── index-modules.html # ES modules entry point HTML
-│   ├── index.html        # Legacy entry point HTML
-│   └── style.css         # CSS styles
+│   │   ├── textures.js   # Procedural texture generation
+│   │   └── utils.js      # Utility functions and error handling
+│   ├── game.html        # Game interface HTML
+│   ├── index.html       # Entry point with redirect to lobby
+│   ├── lobby.html       # Lobby interface for game setup
+│   └── styles/          # CSS styles directory
 ├── server/               # Backend files
 │   └── server.js         # Express and Socket.IO server
 └── package.json          # Project dependencies
@@ -117,13 +127,15 @@ cube-dash-arena/
 └── package.json          # Project dependencies
 ```
 
+> **Note:** The legacy version is kept for reference but is no longer actively maintained.
+
 ---
 
-## 🔄 ES Modules vs Legacy Version
+## 🔄 ES Modules Architecture
 
-This project has been refactored to use ES modules for better code organization, maintainability, and modern JavaScript practices.
+This project uses ES modules for better code organization, maintainability, and modern JavaScript practices.
 
-### Benefits of the ES Modules Version
+### Benefits of the ES Modules Architecture
 
 - **Better Encapsulation**: Each module is responsible for its own functionality with clear boundaries
 - **Explicit Dependencies**: You can see exactly what each module depends on
@@ -131,58 +143,44 @@ This project has been refactored to use ES modules for better code organization,
 - **Better Maintainability**: Code is more organized and easier to understand
 - **Modern JavaScript**: Following ES module best practices
 
-### How to Use the ES Modules Version
+### Game Flow
 
-The ES modules version is now the default version of the game. Simply open the root URL after starting the server:
+1. `index.html` redirects to `lobby.html` for player setup
+2. After player setup, the game launches in `game.html`
+3. `main.js` initializes the game components and modules
+4. `gameManager.js` orchestrates the game loop and state management
+5. `socketManager.js` handles multiplayer communication
 
-```
-http://localhost:3001/
-```
+---
 
-The legacy version is still available at:
+## 🔧 Recent Code Refactoring
 
-```
-http://localhost:3001/index-legacy.html
-```
+The codebase has undergone significant refactoring to improve quality and maintainability:
 
-## 🚀 Getting Started
+### Centralized Error Handling
 
-### Prerequisites
-- Node.js (v14 or higher)
+- Created a new `utils.js` module with utility functions for error logging
+- Implemented consistent error handling patterns across all modules
+- Added fallback mechanisms for critical failures
 
-### Installation
-1. Clone the repository or download the source code
-2. Navigate to the project directory:
-   ```
-   cd C:\Users\amiru\OneDrive\Desktop\cube-dash-arena
-   ```
-3. Install dependencies:
-   ```
-   npm install
-   ```
+### Removed Code Duplication
 
-### Running the Game
-1. Start the server:
-   ```
-   node server/server.js
-   ```
-2. Open your web browser and navigate to:
-   ```
-   http://localhost:3001
-   ```
-3. To play multiplayer, open another browser window with the same URL
+- Consolidated duplicate UI update logic in `socketManager.js`
+- Removed redundant light setup methods in `scene.js`
+- Eliminated duplicate level display methods in `difficulty.js`
+- Standardized texture settings application in `textures.js`
 
-Notes:
+### Improved Modularity
 
-C:\Users\amiru\OneDrive\Desktop\cube-dash-arena>netstat -ano | findstr :3001
-  TCP    0.0.0.0:3001           0.0.0.0:0              LISTENING       7540
-  TCP    [::]:3001              [::]:0                 LISTENING       7540
+- Better separation of concerns between modules
+- Reduced dependencies between components
+- Enhanced code reusability with helper functions
 
-C:\Users\amiru\OneDrive\Desktop\cube-dash-arena>taskkill /PID [7540] /F
-ERROR: The process "[7540]" not found.
+### Documentation Updates
 
-C:\Users\amiru\OneDrive\Desktop\cube-dash-arena>taskkill /PID 7540 /F
-SUCCESS: The process with PID 7540 has been terminated.
+- Cleaned up README.md to reflect current implementation
+- Removed duplicate sections and outdated information
+- Added detailed comments to clarify complex logic
 
 ### Game Controls
 - **←/→** or **A/D**: Move left/right
@@ -261,23 +259,7 @@ To push your latest code changes to GitHub, follow these steps:
 
 5. Your changes will now be available on GitHub and will trigger automatic redeployment if you're using Render.com
 
----
 
-## 📁 Project Structure
-```
-cube-dash-arena/
-├── client/
-│   ├── index.html
-│   ├── style.css
-│   ├── game.js
-│   └── socket.js
-├── server/
-│   ├── server.js
-│   └── package.json
-└── assets/
-    ├── textures/
-    └── sounds/
-```
 
 ---
 

@@ -155,7 +155,8 @@ export class TextureUtils {
             }
         }
         
-        return new THREE.CanvasTexture(canvas);
+        const texture = new THREE.CanvasTexture(canvas);
+        return this._applyTextureSettings(texture);
     }
     
     // Create a texture for obstacles with more complex patterns
@@ -223,6 +224,7 @@ export class TextureUtils {
             }
         }
         
-        return new THREE.CanvasTexture(canvas);
+        const texture = new THREE.CanvasTexture(canvas);
+        return this._applyTextureSettings(texture);
     }
 }

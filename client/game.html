@@ -78,6 +78,8 @@
             text-align: center;
             font-size: 24px;
             color: #ff2e63;
+            position: absolute;
+            z-index: 100;
         }
         
         #gameOverScreen {
@@ -216,7 +218,7 @@
                 <div>Errors: <span id="errorLog"></span></div>
             </div>
             
-            <div id="waitingMessage" class="ui-element" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: rgba(0, 0, 0, 0.8); padding: 20px; border-radius: 10px; font-size: 24px; text-align: center; z-index: 100; pointer-events: auto;">
+            <div id="waitingMessage" class="ui-element" style="display: none; pointer-events: auto;">
                 <div style="margin-bottom: 10px; font-weight: bold; color: #3498db;">Waiting for another player to join...</div>
                 <div style="font-size: 16px;">Multiplayer game will start automatically when a second player connects.</div>
             </div>

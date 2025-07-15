@@ -139,7 +139,7 @@ export class ObstacleManager {
         if (!player) return false;
         
         // Initialize collision result object
-        const result = { player: false, opponent: false };
+        const result = { player: false, opponent: false, obstacleId: null };
         
         const raycasterDirections = [
             new THREE.Vector3(0, 1, 0),
@@ -166,6 +166,12 @@ export class ObstacleManager {
                     const hitObstacle = intersects[0].object;
                     const originalColor = hitObstacle.material.color.clone();
                     hitObstacle.material.color.set(0xffffff);
+                    
+                    // Get obstacle ID if available (for server-controlled obstacles)
+                    if (hitObstacle.userData && hitObstacle.userData.id) {
+                        result.obstacleId = hitObstacle.userData.id;
+                        console.log(`Player collided with obstacle ID: ${result.obstacleId}`);
+                    }
                     
                     setTimeout(() => {
                         if (hitObstacle && hitObstacle.material) {
@@ -391,6 +397,143 @@ export class ObstacleManager {
             console.error('Error creating obstacle from data:', error);
             return null;
         }
+    }
+    
+    // Create an obstacle from server-spawned data
+    createServerObstacle(data) {
+        if (!data || !data.position) {
+            console.error('Invalid server obstacle data received');
+            return null;
+        }
+        
+        try {
+            // Choose geometry based on shape type from server
+            let geometry;
+            const shapeType = data.shapeType !== undefined ? data.shapeType : Math.floor(Math.random() * 4);
+            
+            switch (shapeType) {
+                case 0: // Standard cube
+                    geometry = new THREE.BoxGeometry(OBSTACLE_SIZE, OBSTACLE_SIZE, OBSTACLE_SIZE);
+                    break;
+                case 1: // Tetrahedron (pyramid)
+                    geometry = new THREE.TetrahedronGeometry(OBSTACLE_SIZE * 0.7);
+                    break;
+                case 2: // Octahedron (diamond)
+                    geometry = new THREE.OctahedronGeometry(OBSTACLE_SIZE * 0.6);
+                    break;
+                case 3: // Dodecahedron (12-sided)
+                    geometry = new THREE.DodecahedronGeometry(OBSTACLE_SIZE * 0.6);
+                    break;
+                default:
+                    geometry = new THREE.BoxGeometry(OBSTACLE_SIZE, OBSTACLE_SIZE, OBSTACLE_SIZE);
+            }
+            
+            // Use color from server data if available, otherwise generate random
+            let color;
+            if (data.color) {
+                color = new THREE.Color().setHSL(
+                    data.color.h || Math.random(),
+                    data.color.s || 0.7 + Math.random() * 0.3,
+                    data.color.l || 0.4 + Math.random() * 0.3
+                );
+            } else {
+                const hue = Math.random();
+                const saturation = 0.7 + Math.random() * 0.3;
+                const lightness = 0.4 + Math.random() * 0.3;
+                color = new THREE.Color().setHSL(hue, saturation, lightness);
+            }
+            
+            const hexColor = '#' + color.getHexString();
+            const obstacleTexture = this.textureUtils.createObstacleTexture(hexColor);
+            
+            // Create material with enhanced properties
+            const material = new THREE.MeshStandardMaterial({ 
+                color: color,
+                map: obstacleTexture,
+                roughness: 0.6,
+                metalness: 0.4,
+                flatShading: true,
+                emissive: new THREE.Color(color).multiplyScalar(0.1),
+                emissiveIntensity: 0.2
+            });
+            
+            const obstacle = new THREE.Mesh(geometry, material);
+            
+            // Set obstacle ID from server data
+            obstacle.userData.id = data.id;
+            
+            // Set position from received data
+            obstacle.position.set(
+                data.position.x,
+                data.position.y,
+                data.position.z
+            );
+            
+            // Set rotation if available
+            if (data.rotation) {
+                obstacle.rotation.set(
+                    data.rotation.x,
+                    data.rotation.y,
+                    data.rotation.z
+                );
+            }
+            
+            // Set userData properties from server data
+            obstacle.userData = {
+                ...obstacle.userData,
+                id: data.id, // Store the server-assigned ID
+                baseSpeed: data.userData?.baseSpeed || 0.05,
+                velocity: data.userData?.baseSpeed || 0.05,
+                rotationSpeed: data.userData?.rotationSpeed || {
+                    x: (Math.random() - 0.5) * 0.05,
+                    y: (Math.random() - 0.5) * 0.05,
+                    z: (Math.random() - 0.5) * 0.05
+                }
+            };
+            
+            // Enhanced shadow settings
+            obstacle.castShadow = true;
+            obstacle.receiveShadow = true;
+            
+            // Add a subtle point light to some obstacles for dramatic effect
+            if (Math.random() < 0.2) { // 20% chance
+                const obstacleLight = new THREE.PointLight(
+                    color,
+                    0.6, // intensity
+                    OBSTACLE_SIZE * 3 // distance
+                );
+                obstacleLight.position.set(0, 0, 0); // Center of obstacle
+                obstacle.add(obstacleLight);
+            }
+            
+            this.scene.add(obstacle);
+            this.obstacles.push(obstacle);
+            
+            console.log(`Created server obstacle with ID: ${data.id}`);
+            return obstacle;
+        } catch (error) {
+            console.error('Error creating server obstacle:', error);
+            return null;
+        }
+    }
+    
+    // Remove a specific obstacle by ID
+    removeObstacle(obstacleId) {
+        if (!obstacleId) return false;
+        
+        const index = this.obstacles.findIndex(obstacle => 
+            obstacle.userData && obstacle.userData.id === obstacleId
+        );
+        
+        if (index !== -1) {
+            const obstacle = this.obstacles[index];
+            this.scene.remove(obstacle);
+            this.obstacles.splice(index, 1);
+            console.log(`Removed obstacle with ID: ${obstacleId}`);
+            return true;
+        }
+        
+        return false;
     }
     
     // Sync all obstacles from data received from Player 1

@@ -5,6 +5,9 @@ const io = window.io;
 import { GROUND_LEVEL, PLAYER_SIZE } from './constants.js';
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.module.js';
 
+// Default arena name - can be changed to support multiple arenas
+const DEFAULT_ARENA = 'main-arena';
+
 export class SocketManager {
     constructor(playerName = 'Player') {
         this.socket = null;
@@ -13,6 +16,7 @@ export class SocketManager {
         this.isPlayer1 = false; // Whether this client is player 1 (host)
         this.playerId = null;  // Unique ID for this player
         this.playerCount = 0;  // Initialize player count to 0
+        this.arenaName = DEFAULT_ARENA; // Current arena name
         
         // Ensure playerName is a string, not an HTML element
         if (playerName && typeof playerName === 'object' && playerName.textContent) {
@@ -43,30 +47,48 @@ export class SocketManager {
         console.log('Socket connection initiated');
     }
     
+    // Join a specific arena
+    joinArena(arenaName = DEFAULT_ARENA) {
+        if (!this.socket || !this.isConnected) {
+            console.error('Cannot join arena: socket not connected');
+            return;
+        }
+        
+        this.arenaName = arenaName;
+        this.socket.emit('join-arena', {
+            arena: this.arenaName,
+            name: this.playerName
+        });
+        
+        console.log(`Joining arena: ${this.arenaName}`);
+    }
+    
     setGameManager(gameManager) {
         this.gameManager = gameManager;
         console.log('Game manager set in SocketManager');
     }
     
-    // Update player role display in UI
-    updatePlayerRoleDisplay() {
-        if (!this.waitingMessageElement) return;
-        
-        if (this.playerCount < 2) {
-            this.waitingMessageElement.textContent = 'Waiting for another player to join...';
-            this.waitingMessageElement.style.display = 'block';
-        } else {
-            this.waitingMessageElement.style.display = 'none';
+    // Update player count and waiting message in UI
+    updatePlayerCountDisplay(count) {
+        // Store the player count both locally and globally
+        this.playerCount = count;
+        if (window) {
+            window.currentPlayerCount = count;
         }
         
         // Update player count display
         if (this.playerCountElement) {
-            this.playerCountElement.textContent = `Players: ${this.playerCount}/2`;
+            this.playerCountElement.textContent = `Players: ${count}/2`;
         }
         
-        // Update global player count
-        if (window) {
-            window.currentPlayerCount = this.playerCount;
+        // Show/hide waiting message based on player count
+        if (this.waitingMessageElement) {
+            if (count < 2) {
+                this.waitingMessageElement.textContent = 'Waiting for another player to join...';
+                this.waitingMessageElement.style.display = 'block';
+            } else {
+                this.waitingMessageElement.style.display = 'none';
+            }
         }
     }
     
@@ -208,6 +230,9 @@ export class SocketManager {
             setTimeout(() => {
                 this.socket.emit('joinLobby', { name: this.playerName });
                 console.log('Joined lobby as:', this.playerName);
+                
+                // Also join the default arena
+                this.joinArena(this.arenaName);
             }, 500);
         });
         
@@ -215,6 +240,18 @@ export class SocketManager {
         this.socket.on('disconnect', () => {
             this.isConnected = false;
             console.log('Disconnected from server');
+        });
+        
+        // Listen for player-joined event (new arena-based event)
+        this.socket.on('player-joined', (data) => {
+            console.log(`Player ${data.id} joined the arena`);
+            
+            // If we have a game manager, we might want to create a visual representation
+            // of the new player in the game world
+            if (this.gameManager && this.gameManager.opponent === null) {
+                console.log('Creating opponent for newly joined player');
+                this.createOpponentPlayer();
+            }
         });
         
         // Player joined event - contains player info including role
@@ -261,8 +298,7 @@ export class SocketManager {
                     }
                 }
                 
-                // Update player role display in UI
-                this.updatePlayerRoleDisplay();
+                // No need to update player count here as it will be handled by the playerCount event
             }
         });
         
@@ -319,25 +355,8 @@ export class SocketManager {
         this.socket.on('playerCount', (count) => {
             console.log('Player count update received:', count);
             
-            // Store the player count both locally and globally
-            this.playerCount = count;
-            if (window) {
-                window.currentPlayerCount = count;
-            }
-            
-            if (this.playerCountElement) {
-                this.playerCountElement.textContent = count;
-            }
-            
-            // Show/hide waiting message based on player count
-            if (this.waitingMessageElement) {
-                if (count < 2) {
-                    this.waitingMessageElement.style.display = 'block';
-                    this.waitingMessageElement.textContent = 'Waiting for another player to join...';
-                } else {
-                    this.waitingMessageElement.style.display = 'none';
-                }
-            }
+            // Use the centralized method to update player count display
+            this.updatePlayerCountDisplay(count);
             
             // Create opponent player ONLY when a second player connects
             if (count >= 2 && this.gameManager) {
@@ -382,15 +401,9 @@ export class SocketManager {
         this.socket.on('lobbyUpdate', (data) => {
             console.log('Lobby update received:', data);
             
-            // Update player count from lobby data
-            if (this.playerCountElement && data.players) {
-                this.playerCountElement.textContent = data.players.length;
-                this.playerCount = data.players.length;
-            }
-            
-            // Show/hide waiting message based on player count
-            if (this.waitingMessageElement && data.players) {
-                this.waitingMessageElement.style.display = data.players.length < 2 ? 'block' : 'none';
+            // Update player count from lobby data using centralized method
+            if (data.players) {
+                this.updatePlayerCountDisplay(data.players.length);
             }
             
             // Start the game when both players are present
@@ -423,7 +436,10 @@ export class SocketManager {
         // Obstacle synchronization events
         // Handle obstacle created by Player 1
         this.socket.on('obstacleCreated', (obstacleData) => {
-            if (!this.isPlayer1 && this.gameManager && this.gameManager.obstacleManager) {
+            // Only process obstacles from the same arena
+            const isFromSameArena = !obstacleData.arena || obstacleData.arena === this.arenaName;
+            
+            if (!this.isPlayer1 && isFromSameArena && this.gameManager && this.gameManager.obstacleManager) {
                 console.log('Received obstacle data from Player 1:', obstacleData);
                 // Create the obstacle in Player 2's game
                 this.gameManager.obstacleManager.createObstacleFromData(obstacleData);
@@ -431,11 +447,34 @@ export class SocketManager {
         });
         
         // Handle full obstacle sync from Player 1
-        this.socket.on('syncObstacles', (allObstacles) => {
-            if (!this.isPlayer1 && this.gameManager && this.gameManager.obstacleManager) {
-                console.log('Received full obstacle sync from Player 1:', allObstacles.length, 'obstacles');
+        this.socket.on('syncObstacles', (data) => {
+            // Only process obstacles from the same arena
+            const isFromSameArena = !data.arena || data.arena === this.arenaName;
+            const allObstacles = data.obstacles || data; // Handle both formats for backward compatibility
+            
+            if (!this.isPlayer1 && isFromSameArena && this.gameManager && this.gameManager.obstacleManager) {
+                console.log('Received full obstacle sync from Player 1:', 
+                          Array.isArray(allObstacles) ? allObstacles.length : 'unknown', 'obstacles');
                 // Sync all obstacles in Player 2's game
                 this.gameManager.obstacleManager.syncObstaclesFromData(allObstacles);
+            }
+        });
+        
+        // Listen for server-spawned obstacles
+        this.socket.on('spawn-obstacle', (data) => {
+            console.log('Server spawned obstacle:', data.id);
+            
+            if (this.gameManager && this.gameManager.obstacleManager) {
+                // Create the obstacle using the data from the server
+                this.gameManager.obstacleManager.createServerObstacle(data);
+            }
+        });
+        
+        // Listen for obstacle collisions reported by other players
+        this.socket.on('obstacle-collision', (data) => {
+            if (this.gameManager && this.gameManager.obstacleManager) {
+                // Remove the obstacle that collided with another player
+                this.gameManager.obstacleManager.removeObstacle(data.obstacleId);
             }
         });
         
@@ -496,7 +535,16 @@ export class SocketManager {
                             // Player1 is ALWAYS blue, Player2 is ALWAYS red
                             const opponentColor = opponentRole === 'player1' ? 0x0000ff : 0xff0000;
                             opponent.cube.material.color.setHex(opponentColor);
-                            console.log(`Forced opponent cube color to ${opponentColor === 0x0000ff ? 'BLUE' : 'RED'} for role ${opponentRole}`);
+                            opponent.cube.name = 'OpponentCube'; // Ensure the cube has the correct name
+                            console.log(`Opponent created with role ${opponentRole} and color ${opponentColor === 0x0000ff ? 'BLUE' : 'RED'}`);
+                            
+                            // Make sure the opponent is added to the scene
+                            if (!this.gameManager.sceneManager.scene.children.includes(opponent.cube)) {
+                                console.log('Adding opponent cube to scene');
+                                this.gameManager.sceneManager.scene.add(opponent.cube);
+                            }
+                        } else {
+                            console.error('Failed to create opponent properly');
                         }
                     }
                     
@@ -538,11 +586,12 @@ export class SocketManager {
         
         // Player movement events
         this.socket.on('move', (data) => {
-            // Only process movement from the other player
+            // Only process movement from the other player and from the same arena
             const isFromOpponent = (this.isPlayer1 && data.role === 'player2') || 
                                 (!this.isPlayer1 && data.role === 'player1');
+            const isFromSameArena = !data.arena || data.arena === this.arenaName;
             
-            if (isFromOpponent && this.gameManager) {
+            if (isFromOpponent && isFromSameArena && this.gameManager) {
                 try {
                     // Determine opponent role based on the data
                     const opponentRole = data.role; // Use the role from the move data
@@ -639,9 +688,10 @@ export class SocketManager {
             const moveData = {
                 ...position,
                 playerId: this.playerId,
-                role: this.isPlayer1 ? 'player1' : 'player2'
+                role: this.isPlayer1 ? 'player1' : 'player2',
+                arena: this.arenaName // Include arena information
             };
-            
+            console.log('[emit] Sending move:', moveData);
             this.socket.emit('move', moveData);
         }
     }
@@ -649,28 +699,55 @@ export class SocketManager {
     // Send obstacle creation to server (Player 1 only)
     emitObstacleCreated(obstacleData) {
         if (this.socket && this.isConnected && this.isPlayer1) {
-            this.socket.emit('obstacleCreated', obstacleData);
+            // Include arena information in obstacle data
+            const data = {
+                ...obstacleData,
+                arena: this.arenaName
+            };
+            this.socket.emit('obstacleCreated', data);
+        }
+    }
+    
+    reportObstacleCollision(obstacleId) {
+        if (this.socket && this.isConnected) {
+            this.socket.emit('obstacle-collision', {
+                obstacleId: obstacleId,
+                playerId: this.playerId,
+                playerRole: this.isPlayer1 ? 'player1' : 'player2',
+                arena: this.arenaName
+            });
         }
     }
     
     // Send full obstacle sync to server (Player 1 only)
     emitSyncObstacles(allObstacles) {
         if (this.socket && this.isConnected && this.isPlayer1) {
-            this.socket.emit('syncObstacles', allObstacles);
+            this.socket.emit('syncObstacles', {
+                obstacles: allObstacles,
+                arena: this.arenaName // Include arena information
+            });
         }
     }
     
     // Send game state update to server
     emitGameState(state) {
         if (this.socket && this.isConnected) {
-            this.socket.emit('gameState', state);
+            const gameStateData = {
+                ...state,
+                arena: this.arenaName // Include arena information
+            };
+            this.socket.emit('gameState', gameStateData);
         }
     }
     
     // Send game over event to server
     emitGameOver(data) {
         if (this.socket && this.isConnected) {
-            this.socket.emit('gameOver', data);
+            const gameOverData = {
+                ...data,
+                arena: this.arenaName // Include arena information
+            };
+            this.socket.emit('gameOver', gameOverData);
         }
     }
 }

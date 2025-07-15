@@ -1,5 +1,7 @@
 // THREE.js is loaded from CDN in the HTML file
 // Make sure THREE.js is available
+import { logError, logWarning, logSuccess, updateErrorLog } from './utils.js';
+
 let THREE;
 
 // Function to safely get THREE.js
@@ -88,7 +90,6 @@ export class SceneManager {
                     
                     // Set renderer as global property
                     this.renderer = globalRenderer;
-                    this.renderer.domElement.id = 'gameCanvas';
                     
                     // Explicitly check for getRenderTarget method
                     if (this.renderer && typeof this.renderer.getRenderTarget !== 'function') {
@@ -134,21 +135,13 @@ export class SceneManager {
             this.camera.position.set(0, 5, 10);
             this.camera.lookAt(0, 0, 0);
             
-            // Add lights
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-            this.scene.add(ambientLight);
-            
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(0, 10, 5);
-            directionalLight.castShadow = true;
-            directionalLight.shadow.mapSize.width = 1024;
-            directionalLight.shadow.mapSize.height = 1024;
-            this.scene.add(directionalLight);
-            
             // Handle window resize
             window.addEventListener('resize', () => this.handleResize());
             
             // Test cube removed for production
+            
+            // Setup lights with the comprehensive method
+            this.setupLights();
             
             console.log('SceneManager initialized successfully');
             if (window.updateLoadingStatus) {
@@ -165,14 +158,6 @@ export class SceneManager {
                 window.updateLoadingStatus('Error initializing 3D scene: ' + error.message, 0);
             }
         }
-        
-        // Test cube removed for production
-        
-        // Setup lights
-        this.addLights();
-        
-        // Handle window resize
-        window.addEventListener('resize', () => this.handleResize());
         
         // Log success
         console.log('SceneManager initialization complete');
@@ -268,32 +253,7 @@ export class SceneManager {
         this.scene.remove(object);
     }
     
-    // Add lights to the scene
-    addLights() {
-        try {
-            console.log('Adding lights to scene');
-            
-            // Add ambient light for overall illumination
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-            this.scene.add(ambientLight);
-            
-            // Add directional light for shadows and highlights
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(0, 10, 5);
-            directionalLight.castShadow = true;
-            directionalLight.shadow.mapSize.width = 1024;
-            directionalLight.shadow.mapSize.height = 1024;
-            this.scene.add(directionalLight);
-            
-            console.log('Lights added successfully');
-        } catch (error) {
-            console.error('Error adding lights:', error);
-            const errorLog = document.getElementById('errorLog');
-            if (errorLog) {
-                errorLog.textContent = 'Error adding lights: ' + error.message;
-            }
-        }
-    }
+    // Add lights to the scene - Method removed as setupLights is more comprehensive
     
     // Test cube method removed for production
     

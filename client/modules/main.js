@@ -87,8 +87,7 @@ import { SceneManager } from './scene.js';
 import { Arena } from './arena.js';
 import { Player } from './player.js';
 
-// Make Player class globally available
-window.Player = Player;
+// Import other modules
 import { ObstacleManager } from './obstacles.js';
 import { GameManager } from './gameManager.js';
 import { SocketManager } from './socketManager.js';

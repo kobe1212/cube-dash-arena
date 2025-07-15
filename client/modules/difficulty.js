@@ -8,8 +8,8 @@ export class DifficultyManager {
         this.startTime = 0;
         this.active = false;
         
-        // Create level display
-        this.createLevelDisplay();
+        // Initialize level display
+        this.updateLevelDisplay();
     }
     
     // Start tracking difficulty
@@ -54,13 +54,7 @@ export class DifficultyManager {
         return this.baseObstacleSpeed + speedIncrease;
     }
     
-    // Create level display element
-    createLevelDisplay() {
-        const levelDisplay = document.getElementById('level-display');
-        if (levelDisplay) {
-            levelDisplay.textContent = `Level: ${this.currentLevel}`;
-        }
-    }
+    // Create level display element - Removed as it duplicated updateLevelDisplay
     
     // Update level display
     updateLevelDisplay() {

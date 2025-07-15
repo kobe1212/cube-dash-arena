@@ -157,31 +157,23 @@ export class GameManager {
         // Clear any existing timer
         if (this.obstacleSpawnTimer) {
             clearInterval(this.obstacleSpawnTimer);
+            this.obstacleSpawnTimer = null;
         }
         
-        // Only Player 1 spawns obstacles
-        if (this.isPlayer1) {
-            console.log('Player 1 starting obstacle spawning');
-            
-            this.obstacleSpawnTimer = setInterval(() => {
-                if (!this.isGameOver && this.obstacleManager) {
-                    // Use the new spawnObstacle method which creates and returns obstacle data
-                    const obstacleData = this.obstacleManager.spawnObstacle();
-                    
-                    // Emit obstacle data to server if valid
-                    if (this.socketManager && obstacleData) {
-                        this.socketManager.emitObstacleCreated(obstacleData);
-                    }
-                    
-                    // Every few seconds, sync all obstacles to ensure Player 2 has the complete state
-                    if (Math.random() < 0.1) { // ~10% chance each spawn (every ~3 seconds)
-                        this.syncAllObstacles();
-                    }
-                }
-            }, OBSTACLE_SPAWN_INTERVAL);
-        } else {
-            console.log('Player 2 waiting for obstacle updates from Player 1');
+        // Notify server to start spawning obstacles for this arena
+        if (this.socketManager) {
+            console.log('Notifying server to start obstacle spawning');
+            this.socketManager.emitGameState({
+                gameStarted: true,
+                arena: this.socketManager.arenaName
+            });
         }
+        
+        // Client-side obstacle spawning is disabled since the server now handles it
+        console.log('Using server-controlled obstacle spawning');
+        
+        // Note: We no longer need the old client-side obstacle spawning code
+        // since the server is now responsible for spawning obstacles
     }
     
     // Sync all obstacles from Player 1 to Player 2
@@ -317,8 +309,14 @@ export class GameManager {
                     const collisionResult = this.obstacleManager.checkCollisions(this.player, validOpponent);
                     
                     if (collisionResult) {
+                        // Handle player collision
                         if (collisionResult.player && !this.player.isHit) {
                             this.player.markAsHit();
+                            
+                            // Report obstacle collision to server if we have an obstacle ID
+                            if (this.socketManager && collisionResult.obstacleId) {
+                                this.socketManager.reportObstacleCollision(collisionResult.obstacleId);
+                            }
                             
                             // Emit player hit event
                             if (this.socketManager) {
@@ -421,6 +419,15 @@ export class GameManager {
         if (this.obstacleSpawnTimer) {
             clearInterval(this.obstacleSpawnTimer);
             this.obstacleSpawnTimer = null;
+        }
+        
+        // Notify server to stop spawning obstacles for this arena
+        if (this.socketManager) {
+            console.log('Notifying server to stop obstacle spawning');
+            this.socketManager.emitGameState({
+                gameStarted: false,
+                arena: this.socketManager.arenaName
+            });
         }
         
         // Play game over sound

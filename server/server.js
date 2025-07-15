@@ -22,8 +22,13 @@ app.get('/', (req, res) => {
 // Game state
 let connectedPlayers = 0;
 let gameInProgress = false;
-let obstacles = [];
 let playerRoles = {}; // Track which player is player1 vs player2
+
+// Arena state
+let arenas = {}; // Store arena-specific data
+
+// Obstacle management
+let obstacles = {}; // Store active obstacles per arena
 
 // Lobby state
 let lobbyPlayers = [];
@@ -88,6 +93,59 @@ io.on('connection', socket => {
     
     // Send current leaderboard to new connection
     socket.emit('leaderboardUpdate', leaderboard);
+    
+    // Handle joining an arena
+    socket.on('join-arena', (data) => {
+        const arenaName = data.arena || 'main-arena';
+        const playerName = data.name || 'Anonymous';
+        
+        // Leave any previous arenas
+        Object.keys(socket.rooms).forEach(room => {
+            if (room !== socket.id && room.startsWith('arena:')) {
+                socket.leave(room);
+            }
+        });
+        
+        // Join the new arena
+        const arenaRoom = `arena:${arenaName}`;
+        socket.join(arenaRoom);
+        
+        // Initialize arena if it doesn't exist
+        if (!arenas[arenaName]) {
+            arenas[arenaName] = {
+                players: [],
+                obstacles: [],
+                gameInProgress: false,
+                obstacleSpawningActive: false
+            };
+        }
+        
+        // Add player to arena
+        const arenaPlayer = {
+            id: socket.id,
+            name: playerName,
+            role: arenas[arenaName].players.length === 0 ? 'player1' : 'player2'
+        };
+        
+        arenas[arenaName].players.push(arenaPlayer);
+        
+        console.log(`Player ${socket.id} (${playerName}) joined arena: ${arenaName} as ${arenaPlayer.role}`);
+        
+        // Notify other players in the arena
+        socket.to(arenaRoom).emit('player-joined', { 
+            id: socket.id,
+            name: playerName,
+            role: arenaPlayer.role
+        });
+        
+        // Send arena info to the player
+        socket.emit('arena-joined', {
+            arena: arenaName,
+            players: arenas[arenaName].players,
+            role: arenaPlayer.role,
+            isPlayer1: arenaPlayer.role === 'player1'
+        });
+    });
     
     // Handle player joining lobby
     socket.on('joinLobby', data => {
@@ -162,7 +220,15 @@ io.on('connection', socket => {
     
     // Handle player movement
     socket.on('move', data => {
-        // Add player role and name to movement data
+        // Check if this is an arena-based movement
+        if (data.arena) {
+            const arenaRoom = `arena:${data.arena}`;
+            // Only broadcast to players in the same arena
+            socket.to(arenaRoom).emit('move', data);
+            return;
+        }
+        
+        // Legacy handling for non-arena movement
         const player = lobbyPlayers.find(p => p.id === socket.id);
         if (player) {
             data.role = playerRoles[socket.id];
@@ -174,10 +240,52 @@ io.on('connection', socket => {
     
     // Handle obstacle creation/update
     socket.on('syncObstacles', data => {
-        // Only allow player1 to be the source of truth for obstacles
+        // Check if this is an arena-based sync
+        if (data.arena) {
+            const arenaName = data.arena;
+            const arenaRoom = `arena:${arenaName}`;
+            
+            // Check if arena exists
+            if (!arenas[arenaName]) {
+                return;
+            }
+            
+            // Find player in arena
+            const arenaPlayers = arenas[arenaName].players;
+            const player = arenaPlayers.find(p => p.id === socket.id);
+            
+            // Only allow player1 to be the source of truth for obstacles
+            if (player && player.role === 'player1') {
+                arenas[arenaName].obstacles = data.obstacles;
+                socket.to(arenaRoom).emit('syncObstacles', data);
+            }
+            return;
+        }
+        
+        // Legacy handling for non-arena sync
         if (playerRoles[socket.id] === 'player1') {
             obstacles = data.obstacles;
             socket.broadcast.emit('obstaclesUpdate', { obstacles: obstacles });
+        }
+    });
+    
+    // Handle obstacle creation
+    socket.on('obstacleCreated', data => {
+        // Check if this is an arena-based obstacle
+        if (data.arena) {
+            const arenaName = data.arena;
+            const arenaRoom = `arena:${arenaName}`;
+            
+            // Find player in arena
+            if (arenas[arenaName]) {
+                const player = arenas[arenaName].players.find(p => p.id === socket.id);
+                
+                // Only allow player1 to create obstacles
+                if (player && player.role === 'player1') {
+                    socket.to(arenaRoom).emit('obstacleCreated', data);
+                }
+            }
+            return;
         }
     });
     
@@ -195,6 +303,36 @@ io.on('connection', socket => {
         }
     });
     
+    // Handle game state update
+    socket.on('gameState', data => {
+    // Check if this is an arena-based game state update
+    if (data.arena) {
+        const arenaName = data.arena;
+        const arenaRoom = `arena:${arenaName}`;
+        
+        // Update arena game state
+        if (arenas[arenaName]) {
+            arenas[arenaName].gameInProgress = data.gameStarted || false;
+            
+            // Start or stop obstacle spawning based on game state
+            if (data.gameStarted && !arenas[arenaName].obstacleSpawningActive) {
+                arenas[arenaName].obstacleSpawningActive = true;
+                console.log(`Starting obstacle spawning for arena: ${arenaName}`);
+            } else if (!data.gameStarted && arenas[arenaName].obstacleSpawningActive) {
+                arenas[arenaName].obstacleSpawningActive = false;
+                console.log(`Stopping obstacle spawning for arena: ${arenaName}`);
+            }
+        }
+        
+        // Broadcast to players in the same arena
+        socket.to(arenaRoom).emit('gameState', data);
+        return;
+    }
+    
+    // Legacy handling for non-arena game state
+    socket.broadcast.emit('gameState', data);
+    });
+
     // Handle player hit event
     socket.on('playerHit', data => {
         console.log('Player hit event received:', data);
@@ -211,18 +349,139 @@ io.on('connection', socket => {
     // Handle game reset
     socket.on('reset', () => {
         gameInProgress = true;
-        obstacles = [];
         io.emit('gameReset');
     });
     
     // Handle client requesting current obstacle state
     socket.on('requestObstacles', () => {
-        socket.emit('obstaclesUpdate', { obstacles: obstacles });
+        // Send arena-specific obstacles if available
+        const playerArena = Object.keys(socket.rooms).find(room => room.startsWith('arena:'));
+        if (playerArena) {
+            const arenaName = playerArena.replace('arena:', '');
+            socket.emit('obstaclesUpdate', { obstacles: obstacles[arenaName] || [] });
+        } else {
+            socket.emit('obstaclesUpdate', { obstacles: [] });
+        }
+    });
+
+// Keep the process alive
+process.stdin.resume();
+
+// Function to spawn obstacles in arenas
+function spawnObstacle(arenaName) {
+    if (!arenas[arenaName] || !arenas[arenaName].obstacleSpawningActive) {
+        return; // Don't spawn if arena doesn't exist or spawning is inactive
+    }
+    
+    const obstacleId = Date.now().toString() + Math.random().toString(36).substr(2, 5); // unique id
+    
+    // Create random obstacle data
+    const obstacleData = {
+        id: obstacleId,
+        position: {
+            x: (Math.random() - 0.5) * 20, // Random x position
+            y: 20 + (Math.random() * 5),   // Start high above
+            z: (Math.random() - 0.5) * 20  // Random z position
+        },
+        rotation: {
+            x: Math.random() * Math.PI,
+            y: Math.random() * Math.PI,
+            z: Math.random() * Math.PI
+        },
+        userData: {
+            baseSpeed: 0.05 + (Math.random() * 0.03), // Random fall speed
+            rotationSpeed: {
+                x: (Math.random() - 0.5) * 0.05,
+                y: (Math.random() - 0.5) * 0.05,
+                z: (Math.random() - 0.5) * 0.05
+            }
+        },
+        // Random shape type (0-3 for different shapes)
+        shapeType: Math.floor(Math.random() * 4),
+        // Random color in HSL
+        color: {
+            h: Math.random(),
+            s: 0.7 + Math.random() * 0.3,
+            l: 0.4 + Math.random() * 0.3
+        }
+    };
+    
+    // Save obstacle in server memory
+    if (!obstacles[arenaName]) obstacles[arenaName] = [];
+    obstacles[arenaName].push(obstacleData);
+    
+    // Send to all players in the arena
+    const arenaRoom = `arena:${arenaName}`;
+    io.to(arenaRoom).emit('spawn-obstacle', obstacleData);
+    
+    // Log occasionally to avoid console spam
+    if (Math.random() < 0.1) { // 10% chance to log
+        console.log(`Obstacle ${obstacleId.substr(0, 8)}... spawned in ${arenaName}`);
+    }
+}
+
+// Periodically spawn obstacles in active arenas
+setInterval(() => {
+    for (const arenaName in arenas) {
+        if (arenas[arenaName].obstacleSpawningActive && arenas[arenaName].players.length > 0) {
+            spawnObstacle(arenaName);
+        }
+    }
+}, 2000); // Spawn every 2 seconds
+
+    // Handle obstacle collision reporting
+    socket.on('obstacle-collision', (data) => {
+    if (data.arena && data.obstacleId) {
+        const arenaName = data.arena;
+        const arenaRoom = `arena:${arenaName}`;
+        
+        // Broadcast collision to all players in the arena
+        socket.to(arenaRoom).emit('obstacle-collision', {
+            obstacleId: data.obstacleId,
+            playerId: data.playerId,
+            playerRole: data.playerRole
+        });
+        
+        // Remove obstacle from server memory
+        if (obstacles[arenaName]) {
+            const index = obstacles[arenaName].findIndex(o => o.id === data.obstacleId);
+            if (index !== -1) {
+                obstacles[arenaName].splice(index, 1);
+            }
+        }
+    }
     });
     
     // Handle disconnection
     socket.on('disconnect', () => {
         console.log(`User disconnected: ${socket.id}`);
+        
+        // Remove player from all arenas
+        Object.keys(arenas).forEach(arenaName => {
+            const arena = arenas[arenaName];
+            const playerIndex = arena.players.findIndex(p => p.id === socket.id);
+            
+            if (playerIndex !== -1) {
+                const player = arena.players[playerIndex];
+                arena.players.splice(playerIndex, 1);
+                
+                // Notify other players in the arena
+                const arenaRoom = `arena:${arenaName}`;
+                io.to(arenaRoom).emit('player-left', { 
+                    id: socket.id,
+                    name: player.name,
+                    role: player.role
+                });
+                
+                console.log(`Player ${socket.id} left arena: ${arenaName}`);
+                
+                // If arena is empty, clean it up
+                if (arena.players.length === 0) {
+                    delete arenas[arenaName];
+                    console.log(`Arena ${arenaName} deleted (empty)`);
+                }
+            }
+        });
         
         // Remove player from lobby
         const playerIndex = lobbyPlayers.findIndex(p => p.id === socket.id);
@@ -257,11 +516,7 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-// Keep the process alive
-process.stdin.resume();
-
 // Start the server
 server.listen(PORT, () => {
-    console.log(`Server listening on port ${PORT}`);
-    console.log('Press Ctrl+C to stop the server');
+    console.log(`Server running on port ${PORT}`);
 });
